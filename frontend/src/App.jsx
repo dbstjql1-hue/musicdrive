@@ -25,7 +25,7 @@ import {
 import './App.css';
 
 // API Base URL (Vercel 배포 시 환경 변수 설정 권장)
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/+$/, '');
 
 // 브라우저 로컬 저장소 세션 ID 로드 또는 생성 (좋아요 중복 방지용)
 let sessionId = localStorage.getItem('musicdrive_session_id');
