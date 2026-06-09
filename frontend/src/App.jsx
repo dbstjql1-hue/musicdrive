@@ -43,7 +43,7 @@ function App() {
   const [songs, setSongs] = useState([]);
   const [playlists, setPlaylists] = useState([]);
   const [likedSongIds, setLikedSongIds] = useState([]);
-  const [categories, setCategories] = useState(['전체', '발라드', '댄스', '힙합', 'Lofi', '연주곡', '기타']);
+  const [categories, setCategories] = useState(['전체', '발라드', '댄스', '힙합', '케이팝', '펑크', '트로트', '재즈', '기타']);
   
   // Active Filter / Search
   const [selectedCategory, setSelectedCategory] = useState('전체');
