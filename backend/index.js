@@ -22,8 +22,7 @@ if (!supabaseUrl || !supabaseServiceKey) {
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Multer 설정 (파일 업로드 메모리 저장소)
-const storage = multer.memoryStorage();
-const upload = multer.fields([
+const upload = multer({ storage: multer.memoryStorage() }).fields([
   { name: 'audio', maxCount: 1 },
   { name: 'cover', maxCount: 1 }
 ]);
