@@ -77,6 +77,28 @@ app.get('/api/songs/:id', async (req, res) => {
   }
 });
 
+// 2.5. 관리자 비밀번호 검증 (POST /api/admin/verify)
+app.post('/api/admin/verify', (req, res) => {
+  try {
+    const { adminPassword } = req.body;
+    const expectedPassword = process.env.ADMIN_PASSWORD || 'admin1234';
+    
+    console.log('[DEBUG] 어드민 패스워드 검증 요청 수신');
+    console.log('[DEBUG] 입력된 비밀번호 길이:', adminPassword ? adminPassword.length : 0);
+    console.log('[DEBUG] 설정된 비밀번호 길이:', expectedPassword ? expectedPassword.length : 0);
+    console.log('[DEBUG] 비밀번호 일치 여부:', adminPassword === expectedPassword);
+
+    if (adminPassword === expectedPassword) {
+      res.json({ success: true, message: '인증에 성공했습니다.' });
+    } else {
+      res.status(401).json({ error: '관리자 비밀번호가 올바르지 않습니다.' });
+    }
+  } catch (err) {
+    console.error('어드민 검증 오류:', err.message);
+    res.status(500).json({ error: '비밀번호 검증 중 오류가 발생했습니다.' });
+  }
+});
+
 // 3. 신규 음원 등록 및 업로드 (POST /api/songs) - 관리자용
 app.post('/api/songs', upload, async (req, res) => {
   try {
@@ -84,6 +106,12 @@ app.post('/api/songs', upload, async (req, res) => {
 
     // 관리자 비밀번호 검증
     const expectedPassword = process.env.ADMIN_PASSWORD || 'admin1234';
+    
+    console.log('[DEBUG] 음원 업로드 요청 - 관리자 검증');
+    console.log('[DEBUG] 입력된 비밀번호 길이:', adminPassword ? adminPassword.length : 0);
+    console.log('[DEBUG] 설정된 비밀번호 길이:', expectedPassword ? expectedPassword.length : 0);
+    console.log('[DEBUG] 비밀번호 일치 여부:', adminPassword === expectedPassword);
+
     if (adminPassword !== expectedPassword) {
       return res.status(403).json({ error: '관리자 인증 비밀번호가 일치하지 않습니다.' });
     }

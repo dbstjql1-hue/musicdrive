@@ -400,14 +400,32 @@ function App() {
   };
 
   // 6. 어드민 음원 업로드 처리
-  const handleAdminAuth = (e) => {
+  const handleAdminAuth = async (e) => {
     e.preventDefault();
-    const expected = 'admin1234'; // 기본 패스워드 설정값 매칭
-    if (adminPassword === expected) {
-      setIsAdminAuthenticated(true);
-      showToast('관리자 인증에 성공했습니다.');
-    } else {
-      showToast('비밀번호가 올바르지 않습니다.');
+    if (!adminPassword) {
+      showToast('비밀번호를 입력하세요.');
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ adminPassword })
+      });
+      
+      const data = await res.json();
+      if (res.ok) {
+        setIsAdminAuthenticated(true);
+        showToast('관리자 인증에 성공했습니다.');
+      } else {
+        showToast(data.error || '비밀번호가 올바르지 않습니다.');
+      }
+    } catch (err) {
+      console.error('어드민 인증 오류:', err);
+      showToast('서버 연결에 실패하여 인증을 진행할 수 없습니다.');
     }
   };
 
