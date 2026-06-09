@@ -184,8 +184,11 @@ app.post('/api/songs', upload, async (req, res) => {
 
     res.status(201).json(newSong);
   } catch (err) {
-    console.error('음원 등록 오류:', err.message);
-    res.status(500).json({ error: `음원 등록 실패: ${err.message}` });
+    console.error('음원 등록 오류 상세:', err);
+    res.status(500).json({ 
+      error: `음원 등록 실패: ${err.message || err}`,
+      details: err
+    });
   }
 });
 
@@ -415,6 +418,66 @@ app.delete('/api/playlists/:id/songs/:songId', async (req, res) => {
   } catch (err) {
     console.error('플레이리스트 곡 제거 오류:', err.message);
     res.status(500).json({ error: '플레이리스트에서 곡을 제거하지 못했습니다.' });
+  }
+});
+
+// 진단 API 엔드포인트 (GET /api/diagnose)
+app.get('/api/diagnose', async (req, res) => {
+  const diagnosis = {
+    supabaseUrlConfigured: !!process.env.SUPABASE_URL,
+    supabaseServiceKeyConfigured: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    databaseConnection: null,
+    songsBucketExists: null,
+    coversBucketExists: null,
+    errors: []
+  };
+
+  try {
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      diagnosis.errors.push('Supabase 환경 변수가 설정되지 않았습니다.');
+    } else {
+      // 1. 데이터베이스 연결 및 테이블 확인
+      const { data, error: dbErr } = await supabase
+        .from('songs')
+        .select('id')
+        .limit(1);
+      
+      if (dbErr) {
+        diagnosis.databaseConnection = false;
+        diagnosis.errors.push(`데이터베이스 연결 실패: ${dbErr.message}`);
+      } else {
+        diagnosis.databaseConnection = true;
+      }
+
+      // 2. Storage 버킷 확인
+      const { data: buckets, error: storageErr } = await supabase.storage.listBuckets();
+      if (storageErr) {
+        diagnosis.errors.push(`스토리지 버킷 목록 조회 실패: ${storageErr.message}`);
+        diagnosis.songsBucketExists = false;
+        diagnosis.coversBucketExists = false;
+      } else {
+        const bucketNames = buckets.map(b => b.name);
+        diagnosis.songsBucketExists = bucketNames.includes('songs');
+        diagnosis.coversBucketExists = bucketNames.includes('covers');
+        
+        if (!diagnosis.songsBucketExists) {
+          diagnosis.errors.push("'songs' 스토리지 버킷이 존재하지 않습니다. Supabase Storage에서 Public으로 생성해 주세요.");
+        }
+        if (!diagnosis.coversBucketExists) {
+          diagnosis.errors.push("'covers' 스토리지 버킷이 존재하지 않습니다. Supabase Storage에서 Public으로 생성해 주세요.");
+        }
+      }
+    }
+  } catch (err) {
+    diagnosis.errors.push(`진단 도중 예외 발생: ${err.message}`);
+  }
+
+  console.log('[DEBUG] 서버 상태 진단 결과:', diagnosis);
+  
+  if (diagnosis.errors.length > 0) {
+    res.status(500).json({ status: 'error', diagnosis });
+  } else {
+    res.json({ status: 'healthy', diagnosis });
   }
 });
 
