@@ -22,7 +22,8 @@ import {
   X,
   FolderHeart,
   Edit2,
-  Trophy
+  Trophy,
+  Clock
 } from 'lucide-react';
 import './App.css';
 import mascotImg from './assets/mascot.png';
@@ -67,6 +68,11 @@ function App() {
   const [isSyncEditing, setIsSyncEditing] = useState(false);
   const [syncIndex, setSyncIndex] = useState(0);
   const [recordedTimes, setRecordedTimes] = useState([]);
+  
+  // 자동 종료 타이머 관련 상태
+  const [sleepTimerMinutes, setSleepTimerMinutes] = useState(null);
+  const [sleepTimeLeft, setSleepTimeLeft] = useState(0);
+  const [isSleepPopoverOpen, setIsSleepPopoverOpen] = useState(false);
   
   // Audio Queue
   const [queue, setQueue] = useState([]);
@@ -127,6 +133,22 @@ function App() {
   // HTML Audio Ref
   const audioRef = useRef(new Audio());
   const lyricsBodyRef = useRef(null);
+  const sleepPopoverRef = useRef(null);
+
+  // 외부 클릭 시 자동 종료 타이머 팝오버 닫기
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (sleepPopoverRef.current && !sleepPopoverRef.current.contains(e.target)) {
+        setIsSleepPopoverOpen(false);
+      }
+    };
+    if (isSleepPopoverOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isSleepPopoverOpen]);
 
   // 파싱된 가사 목록
   const parsedLyrics = useMemo(() => {
@@ -385,6 +407,50 @@ function App() {
       showToast('서버 연결에 실패했습니다.');
     }
   };
+
+  const handleSetSleepTimer = (minutes) => {
+    if (minutes === null) {
+      setSleepTimerMinutes(null);
+      setSleepTimeLeft(0);
+      showToast('자동 종료 타이머가 해제되었습니다.');
+    } else {
+      setSleepTimerMinutes(minutes);
+      setSleepTimeLeft(minutes * 60);
+      showToast(`${minutes >= 60 ? Math.floor(minutes / 60) + '시간 ' + (minutes % 60 ? (minutes % 60) + '분' : '') : minutes + '분'} 뒤 자동 종료 타이머가 설정되었습니다.`);
+    }
+    setIsSleepPopoverOpen(false);
+  };
+
+  const formatSleepTime = (seconds) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (h > 0) {
+      return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+    return `${m}:${String(s).padStart(2, '0')}`;
+  };
+
+  // 자동 종료 타이머 카운트다운 로직
+  useEffect(() => {
+    if (sleepTimerMinutes === null || sleepTimeLeft <= 0) return;
+
+    const interval = setInterval(() => {
+      setSleepTimeLeft((prev) => {
+        if (prev <= 1) {
+          audioRef.current.pause();
+          setIsPlaying(false);
+          setSleepTimerMinutes(null);
+          showToast('⏰ 자동 종료 타이머가 만료되어 재생을 중단했습니다.');
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [sleepTimerMinutes, sleepTimeLeft]);
 
   // Toast 알림 헬퍼
   const showToast = (msg) => {
@@ -1907,6 +1973,34 @@ function App() {
           >
             <BookOpen size={18} />
           </button>
+
+          <div className="sleep-timer-container" ref={sleepPopoverRef} style={{ position: 'relative' }}>
+            <button 
+              className={`control-btn sleep-timer-btn ${sleepTimerMinutes !== null ? 'active' : ''}`}
+              onClick={() => setIsSleepPopoverOpen(!isSleepPopoverOpen)}
+              title="자동 종료 설정"
+            >
+              <Clock size={18} />
+              {sleepTimerMinutes !== null && (
+                <span className="sleep-badge">{formatSleepTime(sleepTimeLeft)}</span>
+              )}
+            </button>
+            
+            {isSleepPopoverOpen && (
+              <div className="sleep-timer-popover">
+                <div className="popover-title">자동 종료 설정</div>
+                <div className="popover-item" onClick={() => handleSetSleepTimer(10)}>10분 뒤</div>
+                <div className="popover-item" onClick={() => handleSetSleepTimer(30)}>30분 뒤</div>
+                <div className="popover-item" onClick={() => handleSetSleepTimer(60)}>1시간 뒤</div>
+                <div className="popover-item" onClick={() => handleSetSleepTimer(120)}>2시간 뒤</div>
+                <div className="popover-item" onClick={() => handleSetSleepTimer(180)}>3시간 뒤</div>
+                <div className="popover-item" onClick={() => handleSetSleepTimer(240)}>4시간 뒤</div>
+                <div className="popover-divider"></div>
+                <div className="popover-item disable" onClick={() => handleSetSleepTimer(null)}>설정 안 함</div>
+              </div>
+            )}
+          </div>
+
           <div className="volume-container">
             <button className="icon-btn" onClick={() => setIsMuted(!isMuted)}>
               {isMuted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}

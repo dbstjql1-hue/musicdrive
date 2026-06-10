@@ -742,6 +742,101 @@ body {
   width: 80%; /* 기본값 */
 }
 
+/* Sleep Timer styles */
+.sleep-timer-container {
+  display: flex;
+  align-items: center;
+}
+
+.sleep-timer-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sleep-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background-color: var(--primary);
+  color: var(--text-primary);
+  font-size: 8px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 8px;
+  min-width: 14px;
+  text-align: center;
+  box-shadow: 0 0 6px var(--primary-glow);
+}
+
+.sleep-timer-popover {
+  position: absolute;
+  bottom: 50px;
+  right: 0;
+  width: 160px;
+  background-color: rgba(20, 20, 30, 0.95);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  z-index: 200;
+  animation: popoverFadeIn 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+@keyframes popoverFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sleep-timer-popover .popover-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 8px 16px 4px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  margin-bottom: 4px;
+}
+
+.sleep-timer-popover .popover-item {
+  padding: 8px 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition);
+  text-align: left;
+}
+
+.sleep-timer-popover .popover-item:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.sleep-timer-popover .popover-divider {
+  height: 1px;
+  background-color: rgba(255, 255, 255, 0.05);
+  margin: 4px 0;
+}
+
+.sleep-timer-popover .popover-item.disable {
+  color: #ff4d6d;
+}
+
+.sleep-timer-popover .popover-item.disable:hover {
+  background-color: rgba(255, 77, 109, 0.1);
+}
+
 /* Lyrics Drawer (Slide Out Panel) */
 .lyrics-drawer {
   position: absolute;
