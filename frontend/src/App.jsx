@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Home,
   Search,
@@ -121,6 +121,75 @@ function App() {
   
   // HTML Audio Ref
   const audioRef = useRef(new Audio());
+  const lyricsBodyRef = useRef(null);
+
+  // 파싱된 가사 목록
+  const parsedLyrics = useMemo(() => {
+    if (!activeSong || !activeSong.lyrics) return [];
+    
+    const lines = activeSong.lyrics.split('\n');
+    const parsed = [];
+    const lrcRegex = /^\[(\d{2}):(\d{2})(?:\.(\d{2,3}))?\](.*)/;
+    let hasTimestamps = false;
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const match = trimmed.match(lrcRegex);
+      if (match) {
+        hasTimestamps = true;
+        const minutes = parseInt(match[1], 10);
+        const seconds = parseInt(match[2], 10);
+        const ms = match[3] ? parseInt(match[3].padEnd(3, '0').substring(0, 3), 10) : 0;
+        const time = minutes * 60 + seconds + ms / 1000;
+        const text = match[4].trim();
+        parsed.push({ time, text });
+      } else {
+        parsed.push({ time: null, text: trimmed });
+      }
+    }
+    
+    if (hasTimestamps) {
+      return parsed.filter(line => line.time !== null).sort((a, b) => a.time - b.time);
+    } else {
+      const cleanLines = parsed.filter(line => line.text !== '');
+      const totalLines = cleanLines.length;
+      if (totalLines === 0) return [];
+      
+      const songDuration = duration || 180;
+      return cleanLines.map((line, idx) => {
+        const time = idx * (songDuration / totalLines);
+        return { time, text: line.text };
+      });
+    }
+  }, [activeSong?.lyrics, duration]);
+
+  // 현재 재생 시간에 맞는 가사 인덱스
+  const currentLyricIndex = useMemo(() => {
+    if (parsedLyrics.length === 0) return -1;
+    
+    let activeIdx = -1;
+    for (let i = 0; i < parsedLyrics.length; i++) {
+      if (currentTime >= parsedLyrics[i].time) {
+        activeIdx = i;
+      } else {
+        break;
+      }
+    }
+    return activeIdx;
+  }, [parsedLyrics, currentTime]);
+
+  // 가사 활성화 시 해당 가사 요소를 컨테이너의 중앙으로 부드럽게 스크롤
+  useEffect(() => {
+    if (!isLyricsOpen || currentLyricIndex === -1 || !lyricsBodyRef.current) return;
+    
+    const activeEl = lyricsBodyRef.current.children[currentLyricIndex];
+    if (activeEl) {
+      activeEl.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+    }
+  }, [currentLyricIndex, isLyricsOpen]);
   
   // Toast 알림 헬퍼
   const showToast = (msg) => {
@@ -1496,7 +1565,7 @@ function App() {
                         <textarea 
                           className="form-control" 
                           style={{ minHeight: '120px', resize: 'vertical' }}
-                          placeholder="가사를 입력해 주세요 (시간 정보를 함께 적어두면 유용합니다)"
+                          placeholder="가사를 입력해 주세요. (예: [00:15.20] 동해물과 백두산이 [00:20.00] 마르고 닳도록...)\n* 시간 정보를 입력하지 않으면 전체 재생 시간에 맞춰 가사가 자동 스크롤됩니다."
                           value={uploadLyrics}
                           onChange={(e) => setUploadLyrics(e.target.value)}
                         />
@@ -1662,13 +1731,26 @@ function App() {
             <X size={20} />
           </button>
         </div>
-        <div className="lyrics-body">
+        <div className="lyrics-body" ref={lyricsBodyRef}>
           {activeSong && activeSong.lyrics ? (
-            activeSong.lyrics.split('\n').map((line, idx) => (
-              <div className="lyrics-line" key={idx}>
-                {line}
-              </div>
-            ))
+            parsedLyrics.length > 0 ? (
+              parsedLyrics.map((line, idx) => (
+                <div 
+                  className={`lyrics-line ${idx === currentLyricIndex ? 'active' : ''} clickable`} 
+                  key={idx}
+                  onClick={() => {
+                    if (line.time !== null) {
+                      audioRef.current.currentTime = line.time;
+                      setCurrentTime(line.time);
+                    }
+                  }}
+                >
+                  {line.text}
+                </div>
+              ))
+            ) : (
+              <div style={{ color: 'var(--text-secondary)' }}>가사가 등록되어 있지 않습니다.</div>
+            )
           ) : (
             <div style={{ color: 'var(--text-secondary)' }}>가사가 등록되어 있지 않습니다.</div>
           )}
@@ -1763,7 +1845,7 @@ function App() {
                 <textarea 
                   className="form-control" 
                   style={{ minHeight: '120px', resize: 'vertical' }}
-                  placeholder="가사를 입력해 주세요"
+                  placeholder="가사를 입력해 주세요. (예: [00:15.20] 동해물과 백두산이 [00:20.00] 마르고 닳도록...)\n* 시간 정보를 입력하지 않으면 전체 재생 시간에 맞춰 가사가 자동 스크롤됩니다."
                   value={editLyrics}
                   onChange={(e) => setEditLyrics(e.target.value)}
                 />
