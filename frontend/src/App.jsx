@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Home,
   Search,
@@ -192,7 +192,7 @@ function App() {
         return { time, text: line.text };
       });
     }
-  }, [activeSong?.lyrics, duration]);
+  }, [activeSong, duration]);
 
   // 현재 재생 시간에 맞는 가사 인덱스
   const currentLyricIndex = useMemo(() => {
@@ -243,7 +243,7 @@ function App() {
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSyncEditing, syncIndex, recordedTimes, isPlaying]);
+  }, [isSyncEditing, recordSyncTimestamp]);
 
   const startSyncEditing = () => {
     if (!activeSong || !activeSong.lyrics) return;
@@ -272,7 +272,7 @@ function App() {
     setIsSyncEditing(true);
   };
 
-  const recordSyncTimestamp = () => {
+  const recordSyncTimestamp = useCallback(() => {
     if (!isSyncEditing) return;
     if (syncIndex >= recordedTimes.length) return;
     
@@ -293,7 +293,7 @@ function App() {
       showToast('모든 가사의 싱크 기록이 완료되었습니다! 저장 버튼을 눌러주세요.');
       setSyncIndex(syncIndex + 1);
     }
-  };
+  }, [isSyncEditing, syncIndex, recordedTimes, isPlaying]);
 
   const saveSyncedLyrics = async () => {
     if (!activeSong) return;
@@ -667,6 +667,7 @@ function App() {
   // 카테고리 또는 검색 쿼리가 변경되면 음원을 다시 로드
   useEffect(() => {
     fetchSongs(searchQuery, selectedCategory);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategory]);
 
   const handleSearchSubmit = (e) => {
@@ -688,6 +689,7 @@ function App() {
       audio.pause();
       audio.src = '';
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSong]);
 
   useEffect(() => {
@@ -703,6 +705,87 @@ function App() {
   useEffect(() => {
     audioRef.current.volume = isMuted ? 0 : volume;
   }, [volume, isMuted]);
+
+  // 4. API 인터랙션 함수들
+  const incrementPlayCount = useCallback(async (songId) => {
+    try {
+      fetch(`${API_BASE_URL}/api/songs/${songId}/play`, { method: 'POST' });
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
+  // 3. 재생기 제어 함수들
+  const playSingleSong = (song) => {
+    // 큐를 현재 보여지는 곡 목록으로 업데이트하고 현재 곡을 큐에 설정
+    const index = songs.findIndex(s => s.id === song.id);
+    setQueue(songs);
+    setQueueIndex(index);
+    setActiveSong(song);
+    setIsPlaying(true);
+    incrementPlayCount(song.id);
+  };
+
+  const handlePlayPause = () => {
+    if (!activeSong && songs.length > 0) {
+      playSingleSong(songs[0]);
+    } else {
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  const handleNextSong = useCallback(() => {
+    if (queue.length === 0) return;
+    
+    let nextIndex = queueIndex + 1;
+    if (isShuffled) {
+      nextIndex = Math.floor(Math.random() * queue.length);
+    } else if (nextIndex >= queue.length) {
+      nextIndex = 0; // 루프해서 처음으로
+    }
+    
+    setQueueIndex(nextIndex);
+    setActiveSong(queue[nextIndex]);
+    setIsPlaying(true);
+    incrementPlayCount(queue[nextIndex].id);
+  }, [queue, queueIndex, isShuffled, incrementPlayCount]);
+
+  const handlePrevSong = useCallback(() => {
+    if (queue.length === 0) return;
+
+    let prevIndex = queueIndex - 1;
+    if (prevIndex < 0) {
+      prevIndex = queue.length - 1; // 마지막 곡으로
+    }
+
+    setQueueIndex(prevIndex);
+    setActiveSong(queue[prevIndex]);
+    setIsPlaying(true);
+    incrementPlayCount(queue[prevIndex].id);
+  }, [queue, queueIndex, incrementPlayCount]);
+
+  const handleSeek = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pos = (e.clientX - rect.left) / rect.width;
+    const newTime = pos * duration;
+    audioRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
+
+  const handleVolumeSeek = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pos = (e.clientX - rect.left) / rect.width;
+    const newVol = Math.max(0, Math.min(1, pos));
+    setVolume(newVol);
+    setIsMuted(false);
+  };
+
+  const formatTime = (secs) => {
+    if (isNaN(secs)) return '0:00';
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -733,88 +816,7 @@ function App() {
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
       audio.removeEventListener('ended', handleEnded);
     };
-  }, [queue, queueIndex, isLooping, isShuffled]);
-
-  // 3. 재생기 제어 함수들
-  const playSingleSong = (song) => {
-    // 큐를 현재 보여지는 곡 목록으로 업데이트하고 현재 곡을 큐에 설정
-    const index = songs.findIndex(s => s.id === song.id);
-    setQueue(songs);
-    setQueueIndex(index);
-    setActiveSong(song);
-    setIsPlaying(true);
-    incrementPlayCount(song.id);
-  };
-
-  const handlePlayPause = () => {
-    if (!activeSong && songs.length > 0) {
-      playSingleSong(songs[0]);
-    } else {
-      setIsPlaying(!isPlaying);
-    }
-  };
-
-  function handleNextSong() {
-    if (queue.length === 0) return;
-    
-    let nextIndex = queueIndex + 1;
-    if (isShuffled) {
-      nextIndex = Math.floor(Math.random() * queue.length);
-    } else if (nextIndex >= queue.length) {
-      nextIndex = 0; // 루프해서 처음으로
-    }
-    
-    setQueueIndex(nextIndex);
-    setActiveSong(queue[nextIndex]);
-    setIsPlaying(true);
-    incrementPlayCount(queue[nextIndex].id);
-  };
-
-  function handlePrevSong() {
-    if (queue.length === 0) return;
-
-    let prevIndex = queueIndex - 1;
-    if (prevIndex < 0) {
-      prevIndex = queue.length - 1; // 마지막 곡으로
-    }
-
-    setQueueIndex(prevIndex);
-    setActiveSong(queue[prevIndex]);
-    setIsPlaying(true);
-    incrementPlayCount(queue[prevIndex].id);
-  };
-
-  const handleSeek = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pos = (e.clientX - rect.left) / rect.width;
-    const newTime = pos * duration;
-    audioRef.current.currentTime = newTime;
-    setCurrentTime(newTime);
-  };
-
-  const handleVolumeSeek = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pos = (e.clientX - rect.left) / rect.width;
-    const newVol = Math.max(0, Math.min(1, pos));
-    setVolume(newVol);
-    setIsMuted(false);
-  };
-
-  const formatTime = (secs) => {
-    if (isNaN(secs)) return '0:00';
-    const m = Math.floor(secs / 60);
-    const s = Math.floor(secs % 60);
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
-  };
-
-  // 4. API 인터랙션 함수들
-  const incrementPlayCount = async (songId) => {
-    try {
-      fetch(`${API_BASE_URL}/api/songs/${songId}/play`, { method: 'POST' });
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  }, [isLooping, handleNextSong]);
 
   const toggleLike = async (e, songId) => {
     e.stopPropagation();
