@@ -1431,4 +1431,217 @@ body {
   padding: 0 4px;
 }
 
+/* ==========================================
+   Lyrics Sync Editor Styles
+   ========================================== */
+
+.sync-edit-trigger-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: var(--transition);
+  margin-top: 4px;
+}
+
+.sync-edit-trigger-btn:hover {
+  background-color: var(--primary);
+  border-color: transparent;
+  color: var(--text-primary);
+  box-shadow: 0 0 8px var(--primary-glow);
+}
+
+.sync-badge-recording {
+  background-color: rgba(255, 77, 109, 0.15);
+  color: #ff4d6d;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 77, 109, 0.3);
+  margin-top: 4px;
+  animation: pulseRecording 1.5s infinite alternate;
+}
+
+@keyframes pulseRecording {
+  from { opacity: 0.7; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1.02); }
+}
+
+.sync-editing.lyrics-drawer {
+  width: 420px; /* 편집 모드에서는 화면 가독성을 위해 살짝 넓힘 */
+}
+
+.sync-edit-body {
+  padding: 16px 20px !important;
+  display: flex;
+  flex-direction: column;
+  height: calc(100% - 80px);
+}
+
+.sync-editor-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 16px;
+}
+
+.highlight-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  text-align: left;
+  background-color: rgba(255, 255, 255, 0.02);
+  border-left: 2px solid var(--primary);
+  padding: 8px 12px;
+  border-radius: 4px;
+}
+
+.sync-timer {
+  font-family: var(--font-outfit);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--secondary);
+  text-align: center;
+  letter-spacing: 0.5px;
+  text-shadow: 0 0 10px var(--secondary-glow);
+}
+
+.sync-lines-list {
+  flex-grow: 1;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background-color: rgba(0, 0, 0, 0.2);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 50vh;
+}
+
+.sync-lines-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sync-lines-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sync-lines-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.sync-lines-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.sync-edit-line {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  transition: var(--transition);
+  cursor: pointer;
+  font-size: 13px;
+  gap: 10px;
+}
+
+.sync-edit-line:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.sync-edit-line .line-num {
+  font-family: var(--font-outfit);
+  font-weight: 700;
+  color: var(--text-muted);
+  width: 20px;
+  font-size: 11px;
+}
+
+.sync-edit-line .line-text {
+  flex-grow: 1;
+  text-align: left;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sync-edit-line .line-time {
+  font-family: var(--font-outfit);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--secondary);
+}
+
+/* 대기 및 이미 완료 상태 라인 스타일 */
+.sync-edit-line.recorded {
+  opacity: 0.5;
+}
+.sync-edit-line.recorded .line-text {
+  color: var(--text-muted);
+}
+.sync-edit-line.recorded .line-time {
+  color: #52b788; /* 완료된 시간 녹색 하이라이트 */
+}
+
+/* 현재 포커스 라인 스타일 */
+.sync-edit-line.current {
+  background-color: rgba(157, 78, 221, 0.08);
+  border-color: rgba(157, 78, 221, 0.4);
+  box-shadow: 0 0 10px rgba(157, 78, 221, 0.15);
+}
+.sync-edit-line.current .line-text {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+.sync-edit-line.current .line-num {
+  color: var(--primary);
+}
+
+/* 거대 레코딩 액션 버튼 */
+.btn-sync-record {
+  background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%);
+  color: var(--text-primary);
+  border: none;
+  border-radius: 30px;
+  padding: 16px;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: 0 4px 15px var(--primary-glow);
+  width: 100%;
+}
+
+.btn-sync-record:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px var(--primary);
+}
+
+.btn-sync-record:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-sync-record:disabled {
+  background: var(--border-color);
+  color: var(--text-muted);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.sync-editor-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: auto;
+}
+
 

@@ -63,6 +63,11 @@ function App() {
   const [isShuffled, setIsShuffled] = useState(false);
   const [isLyricsOpen, setIsLyricsOpen] = useState(false);
   
+  // 가사 싱크 편집 모드 관련 상태
+  const [isSyncEditing, setIsSyncEditing] = useState(false);
+  const [syncIndex, setSyncIndex] = useState(0);
+  const [recordedTimes, setRecordedTimes] = useState([]);
+  
   // Audio Queue
   const [queue, setQueue] = useState([]);
   const [queueIndex, setQueueIndex] = useState(-1);
@@ -156,8 +161,12 @@ function App() {
       if (totalLines === 0) return [];
       
       const songDuration = duration || 180;
+      const startTime = Math.max(5, songDuration * 0.06);
+      const endTime = Math.min(songDuration - 10, songDuration * 0.90);
+      const activeDuration = endTime - startTime;
+      
       return cleanLines.map((line, idx) => {
-        const time = idx * (songDuration / totalLines);
+        const time = startTime + idx * (activeDuration / (totalLines - 1 || 1));
         return { time, text: line.text };
       });
     }
@@ -190,7 +199,140 @@ function App() {
       });
     }
   }, [currentLyricIndex, isLyricsOpen]);
-  
+
+  // 가사 싱크 실시간 레코딩을 위한 키 입력 리스너 (Spacebar)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!isSyncEditing) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        recordSyncTimestamp();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSyncEditing, syncIndex, recordedTimes, isPlaying]);
+
+  const startSyncEditing = () => {
+    if (!activeSong || !activeSong.lyrics) return;
+    
+    const rawLines = activeSong.lyrics.split('\n')
+      .map(line => {
+        const trimmed = line.trim();
+        const lrcRegex = /^\[\d{2}:\d{2}(?:\.\d{2,3})?\](.*)/;
+        const match = trimmed.match(lrcRegex);
+        return match ? match[1].trim() : trimmed;
+      })
+      .filter(line => line !== '');
+      
+    if (rawLines.length === 0) {
+      showToast('싱크를 맞출 가사 텍스트가 존재하지 않습니다.');
+      return;
+    }
+    
+    audioRef.current.pause();
+    audioRef.current.currentTime = 0;
+    setCurrentTime(0);
+    setIsPlaying(false);
+    
+    setRecordedTimes(new Array(rawLines.length).fill(null));
+    setSyncIndex(0);
+    setIsSyncEditing(true);
+  };
+
+  const recordSyncTimestamp = () => {
+    if (!isSyncEditing) return;
+    if (syncIndex >= recordedTimes.length) return;
+    
+    const currentAudioTime = audioRef.current.currentTime;
+    
+    if (!isPlaying) {
+      audioRef.current.play().catch(err => console.log(err));
+      setIsPlaying(true);
+    }
+    
+    const nextTimes = [...recordedTimes];
+    nextTimes[syncIndex] = currentAudioTime;
+    setRecordedTimes(nextTimes);
+    
+    if (syncIndex < recordedTimes.length - 1) {
+      setSyncIndex(syncIndex + 1);
+    } else {
+      showToast('모든 가사의 싱크 기록이 완료되었습니다! 저장 버튼을 눌러주세요.');
+      setSyncIndex(syncIndex + 1);
+    }
+  };
+
+  const saveSyncedLyrics = async () => {
+    if (!activeSong) return;
+    
+    const hasUnrecorded = recordedTimes.some(t => t === null);
+    if (hasUnrecorded) {
+      if (!window.confirm('아직 싱크가 기록되지 않은 가사 라인이 있습니다. 그대로 저장하시겠습니까?')) {
+        return;
+      }
+    }
+    
+    const rawLines = activeSong.lyrics.split('\n')
+      .map(line => {
+        const trimmed = line.trim();
+        const lrcRegex = /^\[\d{2}:\d{2}(?:\.\d{2,3})?\](.*)/;
+        const match = trimmed.match(lrcRegex);
+        return match ? match[1].trim() : trimmed;
+      })
+      .filter(line => line !== '');
+      
+    const lrcLines = rawLines.map((line, idx) => {
+      let time = recordedTimes[idx];
+      if (time === null) {
+        time = idx * (duration / rawLines.length);
+      }
+      
+      const m = Math.floor(time / 60);
+      const s = Math.floor(time % 60);
+      const ms = Math.floor((time % 1) * 100);
+      const timestamp = `[${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(2, '0')}]`;
+      return `${timestamp} ${line}`;
+    });
+    
+    const newLrcText = lrcLines.join('\n');
+    
+    const formData = new FormData();
+    formData.append('title', activeSong.title);
+    formData.append('artist', activeSong.artist);
+    formData.append('category', activeSong.category || '일반');
+    formData.append('lyrics', newLrcText);
+    formData.append('adminPassword', adminPassword || 'admin1234');
+    
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/songs/${activeSong.id}`, {
+        method: 'PUT',
+        body: formData
+      });
+      
+      const data = await res.json();
+      if (res.ok) {
+        showToast('성공적으로 가사 싱크를 저장했습니다!');
+        setIsSyncEditing(false);
+        setActiveSong(data);
+        setSongs(songs.map(s => s.id === activeSong.id ? data : s));
+      } else {
+        showToast(data.error || '싱크 저장 오류가 발생했습니다.');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('서버 연결 오류로 가사 싱크를 저장하지 못했습니다.');
+    }
+  };
+
+  const cancelSyncEditing = () => {
+    setIsSyncEditing(false);
+    setSyncIndex(0);
+    audioRef.current.pause();
+    setIsPlaying(false);
+  };
+
   // Toast 알림 헬퍼
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -1724,37 +1866,106 @@ function App() {
       </footer>
 
       {/* Lyrics Slide-out Drawer */}
-      <div className={`lyrics-drawer ${isLyricsOpen && activeSong && activeSong.lyrics ? 'open' : ''}`}>
+      <div className={`lyrics-drawer ${isLyricsOpen && activeSong && activeSong.lyrics ? 'open' : ''} ${isSyncEditing ? 'sync-editing' : ''}`}>
         <div className="lyrics-header">
-          <h3>가사</h3>
-          <button className="icon-btn" onClick={() => setIsLyricsOpen(false)}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+            <h3>가사</h3>
+            {isAdminAuthenticated && !isSyncEditing && (
+              <button 
+                type="button" 
+                className="sync-edit-trigger-btn"
+                onClick={startSyncEditing}
+              >
+                ⏱️ 싱크 맞추기 (관리자)
+              </button>
+            )}
+            {isSyncEditing && (
+              <span className="sync-badge-recording">🔴 싱크 녹음 중</span>
+            )}
+          </div>
+          <button className="icon-btn" onClick={() => { setIsLyricsOpen(false); if (isSyncEditing) cancelSyncEditing(); }}>
             <X size={20} />
           </button>
         </div>
-        <div className="lyrics-body" ref={lyricsBodyRef}>
-          {activeSong && activeSong.lyrics ? (
-            parsedLyrics.length > 0 ? (
-              parsedLyrics.map((line, idx) => (
-                <div 
-                  className={`lyrics-line ${idx === currentLyricIndex ? 'active' : ''} clickable`} 
-                  key={idx}
-                  onClick={() => {
-                    if (line.time !== null) {
-                      audioRef.current.currentTime = line.time;
-                      setCurrentTime(line.time);
-                    }
-                  }}
+        
+        {isSyncEditing ? (
+          <div className="lyrics-body sync-edit-body">
+            <div className="sync-editor-container">
+              <p className="highlight-hint">노래를 들으며 각 가사 타이밍에 맞춰 아래 <strong>기록</strong> 버튼이나 <strong>스페이스바</strong>를 누르세요.</p>
+              <div className="sync-timer">{formatTime(currentTime)} / {formatTime(duration)}</div>
+              
+              <div className="sync-lines-list">
+                {activeSong.lyrics.split('\n')
+                  .map(line => {
+                    const trimmed = line.trim();
+                    const lrcRegex = /^\[\d{2}:\d{2}(?:\.\d{2,3})?\](.*)/;
+                    const match = trimmed.match(lrcRegex);
+                    return match ? match[1].trim() : trimmed;
+                  })
+                  .filter(line => line !== '')
+                  .map((lineText, idx) => {
+                    let statusClass = '';
+                    if (idx < syncIndex) statusClass = 'recorded';
+                    else if (idx === syncIndex) statusClass = 'current';
+                    
+                    const timeRecord = recordedTimes[idx];
+                    const timeStr = timeRecord !== null && timeRecord !== undefined
+                      ? `[${formatTime(timeRecord)}]`
+                      : '';
+                      
+                    return (
+                      <div className={`sync-edit-line ${statusClass}`} key={idx} onClick={() => setSyncIndex(idx)}>
+                        <span className="line-num">{idx + 1}</span>
+                        <span className="line-text">{lineText}</span>
+                        <span className="line-time">{timeStr}</span>
+                      </div>
+                    );
+                  })
+                }
+              </div>
+              
+              <div className="sync-editor-actions">
+                <button 
+                  type="button" 
+                  className="btn-sync-record"
+                  onClick={recordSyncTimestamp}
+                  disabled={syncIndex >= recordedTimes.length}
                 >
-                  {line.text}
+                  {syncIndex >= recordedTimes.length ? '기록 완료' : '⏱️ 타이밍 기록 (Space)'}
+                </button>
+                <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
+                  <button type="button" className="btn-secondary" style={{ flex: 1 }} onClick={cancelSyncEditing}>취소</button>
+                  <button type="button" className="btn-primary-glow" style={{ flex: 1 }} onClick={saveSyncedLyrics}>저장</button>
                 </div>
-              ))
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="lyrics-body" ref={lyricsBodyRef}>
+            {activeSong && activeSong.lyrics ? (
+              parsedLyrics.length > 0 ? (
+                parsedLyrics.map((line, idx) => (
+                  <div 
+                    className={`lyrics-line ${idx === currentLyricIndex ? 'active' : ''} clickable`} 
+                    key={idx}
+                    onClick={() => {
+                      if (line.time !== null) {
+                        audioRef.current.currentTime = line.time;
+                        setCurrentTime(line.time);
+                      }
+                    }}
+                  >
+                    {line.text}
+                  </div>
+                ))
+              ) : (
+                <div style={{ color: 'var(--text-secondary)' }}>가사가 등록되어 있지 않습니다.</div>
+              )
             ) : (
               <div style={{ color: 'var(--text-secondary)' }}>가사가 등록되어 있지 않습니다.</div>
-            )
-          ) : (
-            <div style={{ color: 'var(--text-secondary)' }}>가사가 등록되어 있지 않습니다.</div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Playlist Creation Modal */}
