@@ -93,3 +93,26 @@ EXECUTE FUNCTION public.handle_song_like_change();
      (저희 백엔드는 supabase의 service_role key를 사용하여 권한 정책 없이도 업로드 가능하게 개발할 예정입니다.)
 ======================================================
 */
+
+-- 4. VS 대결 투표 관련 테이블 추가
+
+-- VS 대결 매치 테이블 (vs_matches)
+CREATE TABLE IF NOT EXISTS public.vs_matches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT NOT NULL,
+    description TEXT,
+    song1_id UUID REFERENCES public.songs(id) ON DELETE CASCADE,
+    song2_id UUID REFERENCES public.songs(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- VS 대결 투표 테이블 (vs_votes)
+CREATE TABLE IF NOT EXISTS public.vs_votes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    match_id UUID REFERENCES public.vs_matches(id) ON DELETE CASCADE,
+    song_id UUID REFERENCES public.songs(id) ON DELETE CASCADE,
+    session_id TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    UNIQUE(match_id, session_id)
+);
+

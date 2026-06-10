@@ -20,9 +20,12 @@ import {
   Plus,
   Trash2,
   X,
-  FolderHeart
+  FolderHeart,
+  Edit2,
+  Trophy
 } from 'lucide-react';
 import './App.css';
+import mascotImg from './assets/mascot.png';
 
 // API Base URL (Vercel 배포 시 환경 변수 설정 권장)
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/+$/, '');
@@ -82,6 +85,36 @@ function App() {
   
   // Popover State (플레이리스트 추가 팝업)
   const [activePopoverSongId, setActivePopoverSongId] = useState(null);
+
+  // Edit Song State
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingSong, setEditingSong] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editArtist, setEditArtist] = useState('');
+  const [editCategory, setEditCategory] = useState('발라드');
+  const [editLyrics, setEditLyrics] = useState('');
+  const [editCoverFile, setEditCoverFile] = useState(null);
+  const [isUpdatingSong, setIsUpdatingSong] = useState(false);
+
+  // Admin Password Verification Modal State for Edits
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authPasswordInput, setAuthPasswordInput] = useState('');
+  const [pendingEditSong, setPendingEditSong] = useState(null);
+
+  // VS Match states
+  const [vsMatches, setVsMatches] = useState([]);
+  const [vsTitle, setVsTitle] = useState('');
+  const [vsSongAId, setVsSongAId] = useState('');
+  const [vsSongBId, setVsSongBId] = useState('');
+  const [isCreatingVS, setIsCreatingVS] = useState(false);
+
+  // VS Match edit states
+  const [isVsEditModalOpen, setIsVsEditModalOpen] = useState(false);
+  const [editingVsMatch, setEditingVsMatch] = useState(null);
+  const [vsEditTitle, setVsEditTitle] = useState('');
+  const [vsEditSongAId, setVsEditSongAId] = useState('');
+  const [vsEditSongBId, setVsEditSongBId] = useState('');
+  const [isUpdatingVS, setIsUpdatingVS] = useState(false);
   
   // Toast UI
   const [toastMessage, setToastMessage] = useState('');
@@ -102,7 +135,162 @@ function App() {
     fetchSongs();
     fetchPlaylists();
     fetchLikedSongs();
+    fetchVSMatches();
   }, []);
+
+  const fetchVSMatches = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/vs-matches?sessionId=${sessionId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setVsMatches(data);
+      }
+    } catch (err) {
+      console.error('VS 대결 가져오기 오류:', err);
+    }
+  };
+
+  const handleCreateVSMatch = async (e) => {
+    e.preventDefault();
+    if (!vsTitle || !vsSongAId || !vsSongBId) {
+      showToast('대결 제목과 두 곡을 모두 선택해 주세요.');
+      return;
+    }
+    if (vsSongAId === vsSongBId) {
+      showToast('서로 다른 두 곡을 선택해야 합니다.');
+      return;
+    }
+
+    setIsCreatingVS(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/vs-matches`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          title: vsTitle,
+          song1_id: vsSongAId,
+          song2_id: vsSongBId,
+          adminPassword: adminPassword || 'admin1234'
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        showToast('성공적으로 대결이 생성되었습니다!');
+        setVsTitle('');
+        setVsSongAId('');
+        setVsSongBId('');
+        fetchVSMatches();
+      } else {
+        showToast(data.error || '대결 생성 중 오류가 발생했습니다.');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('서버 연결 오류로 대결을 생성하지 못했습니다.');
+    } finally {
+      setIsCreatingVS(false);
+    }
+  };
+
+  const handleVSVote = async (matchId, songId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/vs-matches/${matchId}/vote`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ songId, sessionId })
+      });
+
+      if (res.ok) {
+        showToast('투표가 반영되었습니다!');
+        fetchVSMatches();
+      } else {
+        const data = await res.json();
+        showToast(data.error || '투표 처리 오류가 발생했습니다.');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('서버 연결 오류로 투표하지 못했습니다.');
+    }
+  };
+
+  const handleDeleteVSMatch = async (matchId) => {
+    if (!window.confirm('정말로 이 대결을 삭제하시겠습니까?')) return;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/vs-matches/${matchId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ adminPassword: adminPassword || 'admin1234' })
+      });
+
+      if (res.ok) {
+        showToast('대결이 삭제되었습니다.');
+        fetchVSMatches();
+      } else {
+        const data = await res.json();
+        showToast(data.error || '삭제 실패');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const openVsEditModal = (match) => {
+    setEditingVsMatch(match);
+    setVsEditTitle(match.title);
+    setVsEditSongAId(match.song1_id);
+    setVsEditSongBId(match.song2_id);
+    setIsVsEditModalOpen(true);
+  };
+
+  const handleVsEditSubmit = async (e) => {
+    e.preventDefault();
+    if (!vsEditTitle || !vsEditSongAId || !vsEditSongBId) {
+      showToast('대결 제목과 두 곡을 모두 선택해 주세요.');
+      return;
+    }
+    if (vsEditSongAId === vsEditSongBId) {
+      showToast('서로 다른 두 곡을 선택해야 합니다.');
+      return;
+    }
+
+    setIsUpdatingVS(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/vs-matches/${editingVsMatch.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          title: vsEditTitle,
+          song1_id: vsEditSongAId,
+          song2_id: vsEditSongBId,
+          adminPassword: adminPassword || 'admin1234'
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        showToast('성공적으로 대결이 수정되었습니다!');
+        setIsVsEditModalOpen(false);
+        setEditingVsMatch(null);
+        fetchVSMatches();
+      } else {
+        showToast(data.error || '대결 수정 중 오류가 발생했습니다.');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('서버 연결 오류로 대결을 수정하지 못했습니다.');
+    } finally {
+      setIsUpdatingVS(false);
+    }
+  };
 
   const fetchSongs = async (query = '', category = '') => {
     try {
@@ -474,6 +662,148 @@ function App() {
     }
   };
 
+  const handleEditClick = (song) => {
+    if (isAdminAuthenticated) {
+      openEditModal(song);
+    } else {
+      setPendingEditSong(song);
+      setAuthPasswordInput('');
+      setIsAuthModalOpen(true);
+    }
+  };
+
+  const handleAuthModalSubmit = async (e) => {
+    e.preventDefault();
+    if (!authPasswordInput) {
+      showToast('비밀번호를 입력하세요.');
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ adminPassword: authPasswordInput })
+      });
+      
+      const data = await res.json();
+      if (res.ok) {
+        setIsAdminAuthenticated(true);
+        setAdminPassword(authPasswordInput);
+        setIsAuthModalOpen(false);
+        showToast('관리자 인증에 성공했습니다.');
+        
+        if (pendingEditSong) {
+          openEditModal(pendingEditSong);
+          setPendingEditSong(null);
+        }
+      } else {
+        showToast(data.error || '비밀번호가 올바르지 않습니다.');
+      }
+    } catch (err) {
+      console.error('어드민 인증 오류:', err);
+      showToast('서버 연결에 실패하여 인증을 진행할 수 없습니다.');
+    }
+  };
+
+  const openEditModal = (song) => {
+    setEditingSong(song);
+    setEditTitle(song.title);
+    setEditArtist(song.artist);
+    setEditCategory(song.category || '발라드');
+    setEditLyrics(song.lyrics || '');
+    setEditCoverFile(null);
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    if (!editingSong || !editTitle || !editArtist) {
+      showToast('필수 정보를 입력해 주세요.');
+      return;
+    }
+
+    setIsUpdatingSong(true);
+    const formData = new FormData();
+    formData.append('title', editTitle);
+    formData.append('artist', editArtist);
+    formData.append('category', editCategory);
+    formData.append('lyrics', editLyrics);
+    formData.append('adminPassword', adminPassword || 'admin1234');
+    if (editCoverFile) {
+      formData.append('cover', editCoverFile);
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/songs/${editingSong.id}`, {
+        method: 'PUT',
+        body: formData
+      });
+      
+      const data = await res.json();
+      if (res.ok) {
+        showToast('음원이 성공적으로 수정되었습니다.');
+        setIsEditModalOpen(false);
+        setEditingSong(null);
+        setEditCoverFile(null);
+        fetchSongs(); // 목록 새로고침
+        
+        if (activeSong && activeSong.id === editingSong.id) {
+          setActiveSong(data);
+        }
+      } else {
+        showToast(data.error || '음원 수정에 실패했습니다.');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('서버 연결 오류로 음원을 수정하지 못했습니다.');
+    } finally {
+      setIsUpdatingSong(false);
+    }
+  };
+
+  const handleDeleteSong = async (e, song) => {
+    e.stopPropagation();
+    
+    if (!window.confirm(`정말로 '${song.title}' 음원을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없으며, 플레이리스트와 좋아요 목록에서도 삭제됩니다.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/songs/${song.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ adminPassword: adminPassword || 'admin1234' })
+      });
+      
+      const data = await res.json();
+      if (res.ok) {
+        showToast('음원이 성공적으로 삭제되었습니다.');
+        
+        if (activeSong && activeSong.id === song.id) {
+          audioRef.current.pause();
+          audioRef.current.src = '';
+          setActiveSong(null);
+          setIsPlaying(false);
+          setCurrentTime(0);
+          setDuration(0);
+        }
+        
+        fetchSongs(); // 목록 새로고침
+        fetchPlaylists(); // 플레이리스트 동기화
+      } else {
+        showToast(data.error || '음원 삭제에 실패했습니다.');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('서버 연결 오류로 음원을 삭제하지 못했습니다.');
+    }
+  };
+
   return (
     <div className="app-container">
       {/* Toast 알림 표시 */}
@@ -511,6 +841,15 @@ function App() {
             >
               <FolderHeart className="icon" />
               <span>플레이리스트</span>
+            </div>
+          </li>
+          <li>
+            <div 
+              className={`nav-item ${currentView === 'vs' ? 'active' : ''}`}
+              onClick={() => { setCurrentView('vs'); setSelectedPlaylist(null); }}
+            >
+              <Trophy className="icon" />
+              <span>곡 대결 투표</span>
             </div>
           </li>
           <li>
@@ -579,6 +918,16 @@ function App() {
                         <Heart size={16} fill={likedSongIds.includes(song.id) ? "currentColor" : "none"} />
                       </button>
                       <button 
+                        className="icon-btn edit-btn" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditClick(song);
+                        }}
+                        title="음원 수정"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button 
                         className="icon-btn"
                         onClick={(e) => removeSongFromPlaylist(e, selectedPlaylist.id, song.id)}
                         title="플레이리스트에서 제거"
@@ -600,19 +949,22 @@ function App() {
             {/* 1. 홈 화면 */}
             {currentView === 'home' && (
               <div>
-                <div className="hero-banner">
-                  <span className="hero-tag">Original Tracks</span>
-                  <h1 className="hero-title">나만의 창작곡 보관함</h1>
-                  <p className="hero-desc">
-                    직접 작사, 작곡하고 녹음한 노래들이 담겨 있는 공간입니다. 
-                    마음껏 들으시고 좋은 음악이 있다면 플레이리스트에 담아가세요!
-                  </p>
-                  {songs.length > 0 && (
-                    <button className="play-btn-premium" onClick={() => playSingleSong(songs[0])}>
-                      <Play size={18} fill="currentColor" />
-                      첫 번째 곡 듣기
-                    </button>
-                  )}
+                <div className="hero-banner home-hero">
+                  <div className="hero-content">
+                    <span className="hero-tag">Original Tracks</span>
+                    <h1 className="hero-title">나만의 창작곡 보관함</h1>
+                    <p className="hero-desc">
+                      직접 작사, 작곡하고 녹음한 노래들이 담겨 있는 공간입니다. 
+                      마음껏 들으시고 좋은 음악이 있다면 플레이리스트에 담아가세요!
+                    </p>
+                    {songs.length > 0 && (
+                      <button className="play-btn-premium" onClick={() => playSingleSong(songs[0])}>
+                        <Play size={18} fill="currentColor" />
+                        첫 번째 곡 듣기
+                      </button>
+                    )}
+                  </div>
+                  <div className="hero-mascot-bg" style={{ backgroundImage: `url(${mascotImg})` }}></div>
                 </div>
 
                 {/* 카테고리 필터 */}
@@ -658,9 +1010,30 @@ function App() {
                             e.stopPropagation();
                             setActivePopoverSongId(activePopoverSongId === song.id ? null : song.id);
                           }}
+                          title="플레이리스트에 추가"
                         >
                           <FolderPlus size={16} />
                         </button>
+
+                        <button 
+                          className="icon-btn edit-btn" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditClick(song);
+                          }}
+                          title="음원 수정"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        {isAdminAuthenticated && (
+                          <button 
+                            className="icon-btn delete-btn" 
+                            onClick={(e) => handleDeleteSong(e, song)}
+                            title="음원 삭제"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
 
                         {/* 플레이리스트 추가 팝오버 */}
                         {activePopoverSongId === song.id && (
@@ -701,6 +1074,24 @@ function App() {
                           <div className="play-icon-glow">
                             <Play size={20} fill="currentColor" style={{ marginLeft: '2px' }} />
                           </div>
+                        </div>
+                        <div className="card-admin-overlay" onClick={(e) => e.stopPropagation()}>
+                          <button 
+                            className="icon-btn edit-btn" 
+                            onClick={() => handleEditClick(song)}
+                            title="음원 수정"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          {isAdminAuthenticated && (
+                            <button 
+                              className="icon-btn delete-btn" 
+                              onClick={(e) => handleDeleteSong(e, song)}
+                              title="음원 삭제"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div className="card-info">
@@ -776,9 +1167,30 @@ function App() {
                             e.stopPropagation();
                             setActivePopoverSongId(activePopoverSongId === song.id ? null : song.id);
                           }}
+                          title="플레이리스트에 추가"
                         >
                           <FolderPlus size={16} />
                         </button>
+
+                        <button 
+                          className="icon-btn edit-btn" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditClick(song);
+                          }}
+                          title="음원 수정"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        {isAdminAuthenticated && (
+                          <button 
+                            className="icon-btn delete-btn" 
+                            onClick={(e) => handleDeleteSong(e, song)}
+                            title="음원 삭제"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
 
                         {activePopoverSongId === song.id && (
                           <div className="playlist-select-popover">
@@ -803,6 +1215,187 @@ function App() {
                   {songs.length === 0 && (
                     <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
                       검색어와 일치하는 노래가 없습니다. 다른 검색어를 입력해 보세요!
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 3.5. VS 대결 투표 화면 */}
+            {currentView === 'vs' && (
+              <div>
+                <div className="section-header">
+                  <div>
+                    <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Trophy style={{ color: 'var(--primary)' }} />
+                      곡 대결 투표
+                    </h2>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '4px' }}>
+                      같은 가사, 다른 리듬! 여러분의 마음에 더 와닿는 음원에 투표해 주세요.
+                    </p>
+                  </div>
+                </div>
+
+                {/* 관리자용 대결 생성 패널 */}
+                {isAdminAuthenticated && (
+                  <div className="admin-card" style={{ marginBottom: '32px', padding: '24px' }}>
+                    <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '16px' }}>새로운 곡 대결 등록</h3>
+                    <form onSubmit={handleCreateVSMatch} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label>대결 제목 *</label>
+                        <input 
+                          className="form-control" 
+                          placeholder="예: 행복예약 - 발라드 vs 댄스 버전"
+                          value={vsTitle}
+                          onChange={(e) => setVsTitle(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label>곡 A 선택 *</label>
+                          <select 
+                            className="form-control"
+                            value={vsSongAId}
+                            onChange={(e) => setVsSongAId(e.target.value)}
+                            required
+                          >
+                            <option value="">곡을 선택해 주세요</option>
+                            {songs.map(song => (
+                              <option key={song.id} value={song.id}>{song.title} ({song.artist})</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label>곡 B 선택 *</label>
+                          <select 
+                            className="form-control"
+                            value={vsSongBId}
+                            onChange={(e) => setVsSongBId(e.target.value)}
+                            required
+                          >
+                            <option value="">곡을 선택해 주세요</option>
+                            {songs.map(song => (
+                              <option key={song.id} value={song.id}>{song.title} ({song.artist})</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <button type="submit" className="btn-primary-glow" style={{ alignSelf: 'flex-end', padding: '10px 24px' }} disabled={isCreatingVS}>
+                        {isCreatingVS ? '대결 생성 중...' : '대결 생성하기'}
+                      </button>
+                    </form>
+                  </div>
+                )}
+
+                {/* 대결 목록 그리드 */}
+                <div className="vs-grid">
+                  {vsMatches.map(match => {
+                    const totalVotes = (match.song1_votes || 0) + (match.song2_votes || 0);
+                    const song1Pct = totalVotes > 0 ? Math.round((match.song1_votes / totalVotes) * 100) : 50;
+                    const song2Pct = totalVotes > 0 ? 100 - song1Pct : 50;
+
+                    const isSong1Playing = activeSong && activeSong.id === match.song1_id && isPlaying;
+                    const isSong2Playing = activeSong && activeSong.id === match.song2_id && isPlaying;
+
+                    return (
+                      <div className="vs-card" key={match.id}>
+                        {/* 관리자 제어 버튼 (삭제 및 수정) */}
+                        {isAdminAuthenticated && (
+                          <div className="vs-admin-actions">
+                            <button 
+                              className="vs-action-btn edit" 
+                              onClick={() => openVsEditModal(match)}
+                              title="대결 수정"
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                            <button 
+                              className="vs-action-btn delete" 
+                              onClick={() => handleDeleteVSMatch(match.id)}
+                              title="대결 삭제"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        )}
+
+                        <h3 className="vs-card-title">{match.title}</h3>
+
+                        <div className="vs-layout-row">
+                          {/* 곡 1 영역 */}
+                          <div className={`vs-song-section ${match.user_voted_song_id === match.song1_id ? 'voted' : ''}`}>
+                            <div className="vs-img-container" onClick={() => playSingleSong(match.song1)}>
+                              <img className="vs-cover-img" src={match.song1?.cover_url} alt={match.song1?.title} />
+                              <div className="vs-play-overlay">
+                                <div className="vs-play-btn-glow">
+                                  {isSong1Playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" style={{ marginLeft: '2px' }} />}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="vs-song-details">
+                              <div className="vs-song-title">{match.song1?.title}</div>
+                              <div className="vs-song-artist">{match.song1?.artist}</div>
+                            </div>
+                            <button 
+                              className={`vs-vote-button ${match.user_voted_song_id === match.song1_id ? 'active' : ''}`}
+                              onClick={() => handleVSVote(match.id, match.song1_id)}
+                            >
+                              {match.user_voted_song_id === match.song1_id ? 'A곡 선택 취소' : 'A곡 투표하기'}
+                            </button>
+                          </div>
+
+                          {/* 중앙 VS 표시 영역 */}
+                          <div className="vs-middle-section">
+                            <span className="vs-badge">VS</span>
+                          </div>
+
+                          {/* 곡 2 영역 */}
+                          <div className={`vs-song-section ${match.user_voted_song_id === match.song2_id ? 'voted' : ''}`}>
+                            <div className="vs-img-container" onClick={() => playSingleSong(match.song2)}>
+                              <img className="vs-cover-img" src={match.song2?.cover_url} alt={match.song2?.title} />
+                              <div className="vs-play-overlay">
+                                <div className="vs-play-btn-glow">
+                                  {isSong2Playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" style={{ marginLeft: '2px' }} />}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="vs-song-details">
+                              <div className="vs-song-title">{match.song2?.title}</div>
+                              <div className="vs-song-artist">{match.song2?.artist}</div>
+                            </div>
+                            <button 
+                              className={`vs-vote-button ${match.user_voted_song_id === match.song2_id ? 'active' : ''}`}
+                              onClick={() => handleVSVote(match.id, match.song2_id)}
+                            >
+                              {match.user_voted_song_id === match.song2_id ? 'B곡 선택 취소' : 'B곡 투표하기'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* 투표 현황 득표율 표시 바 */}
+                        <div className="vs-progress-section">
+                          <div className="vs-progress-bar-container">
+                            <div className="vs-progress-fill song1-fill" style={{ width: `${song1Pct}%` }}>
+                              <span className="pct-label">{song1Pct}%</span>
+                            </div>
+                            <div className="vs-progress-fill song2-fill" style={{ width: `${song2Pct}%` }}>
+                              <span className="pct-label">{song2Pct}%</span>
+                            </div>
+                          </div>
+                          <div className="vs-votes-summary">
+                            <span>A곡: {match.song1_votes || 0}표</span>
+                            <span style={{ color: 'var(--text-muted)' }}>총 {totalVotes}표 참여</span>
+                            <span>B곡: {match.song2_votes || 0}표</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {vsMatches.length === 0 && (
+                    <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '60px', color: 'var(--text-secondary)' }}>
+                      등록된 대결이 없습니다.
                     </div>
                   )}
                 </div>
@@ -1116,6 +1709,211 @@ function App() {
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setIsPlaylistModalOpen(false)}>취소</button>
                 <button type="submit" className="btn-primary-glow">생성</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Song Modal */}
+      {isEditModalOpen && editingSong && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '600px', width: '90%' }}>
+            <div className="modal-header">
+              <h3>음원 정보 수정</h3>
+              <button className="icon-btn" onClick={() => { setIsEditModalOpen(false); setEditingSong(null); }}>
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleEditSubmit}>
+              <div className="form-group">
+                <label>곡 제목 *</label>
+                <input 
+                  className="form-control" 
+                  placeholder="곡 제목을 입력하세요"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-group" style={{ marginTop: '12px' }}>
+                <label>아티스트 *</label>
+                <input 
+                  className="form-control" 
+                  placeholder="아티스트명 또는 작곡가명을 입력하세요"
+                  value={editArtist}
+                  onChange={(e) => setEditArtist(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-group" style={{ marginTop: '12px' }}>
+                <label>장르 카테고리</label>
+                <select 
+                  className="form-control"
+                  value={editCategory}
+                  onChange={(e) => setEditCategory(e.target.value)}
+                >
+                  {categories.filter(c => c !== '전체').map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group" style={{ marginTop: '12px' }}>
+                <label>가사</label>
+                <textarea 
+                  className="form-control" 
+                  style={{ minHeight: '120px', resize: 'vertical' }}
+                  placeholder="가사를 입력해 주세요"
+                  value={editLyrics}
+                  onChange={(e) => setEditLyrics(e.target.value)}
+                />
+              </div>
+              
+              <div className="form-group" style={{ marginTop: '16px' }}>
+                <label>앨범 아트 / 이미지 변경 (기존 이미지 유지하려면 비워두세요)</label>
+                <div className="file-upload-box" onClick={() => document.getElementById('edit-cover-input').click()}>
+                  <UploadCloud className="icon" />
+                  <span style={{ fontSize: '13px' }}>
+                    {editCoverFile ? editCoverFile.name : '새로운 앨범 아트 선택 (선택 사항)'}
+                  </span>
+                  <input 
+                    type="file" 
+                    id="edit-cover-input" 
+                    accept="image/*" 
+                    style={{ display: 'none' }}
+                    onChange={(e) => setEditCoverFile(e.target.files[0])}
+                  />
+                </div>
+              </div>
+              
+              <div className="modal-actions">
+                <button 
+                  type="button" 
+                  className="btn-secondary" 
+                  onClick={() => { setIsEditModalOpen(false); setEditingSong(null); }}
+                >
+                  취소
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn-primary-glow"
+                  disabled={isUpdatingSong}
+                >
+                  {isUpdatingSong ? '수정 중...' : '저장하기'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Password Verification Modal */}
+      {isAuthModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <h3>관리자 인증</h3>
+              <button className="icon-btn" onClick={() => { setIsAuthModalOpen(false); setPendingEditSong(null); }}>
+                <X size={20} />
+              </button>
+            </div>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '20px' }}>
+              음원을 수정하려면 관리자 비밀번호를 입력해 주세요.
+            </p>
+            <form onSubmit={handleAuthModalSubmit}>
+              <div className="form-group">
+                <label>비밀번호</label>
+                <input 
+                  type="password" 
+                  className="form-control" 
+                  placeholder="비밀번호 입력"
+                  value={authPasswordInput}
+                  onChange={(e) => setAuthPasswordInput(e.target.value)}
+                  autoFocus
+                  required
+                />
+              </div>
+              <div className="modal-actions">
+                <button 
+                  type="button" 
+                  className="btn-secondary" 
+                  onClick={() => { setIsAuthModalOpen(false); setPendingEditSong(null); }}
+                >
+                  취소
+                </button>
+                <button type="submit" className="btn-primary-glow">인증 및 수정</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit VS Match Modal */}
+      {isVsEditModalOpen && editingVsMatch && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '600px', width: '90%' }}>
+            <div className="modal-header">
+              <h3>곡 대결 수정</h3>
+              <button className="icon-btn" onClick={() => { setIsVsEditModalOpen(false); setEditingVsMatch(null); }}>
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleVsEditSubmit}>
+              <div className="form-group">
+                <label>대결 제목 *</label>
+                <input 
+                  className="form-control" 
+                  placeholder="대결 제목을 입력하세요"
+                  value={vsEditTitle}
+                  onChange={(e) => setVsEditTitle(e.target.value)}
+                  required
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '16px' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label>곡 A 선택 *</label>
+                  <select 
+                    className="form-control"
+                    value={vsEditSongAId}
+                    onChange={(e) => setVsEditSongAId(e.target.value)}
+                    required
+                  >
+                    <option value="">곡을 선택해 주세요</option>
+                    {songs.map(song => (
+                      <option key={song.id} value={song.id}>{song.title} ({song.artist})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label>곡 B 선택 *</label>
+                  <select 
+                    className="form-control"
+                    value={vsEditSongBId}
+                    onChange={(e) => setVsEditSongBId(e.target.value)}
+                    required
+                  >
+                    <option value="">곡을 선택해 주세요</option>
+                    {songs.map(song => (
+                      <option key={song.id} value={song.id}>{song.title} ({song.artist})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="modal-actions" style={{ marginTop: '24px' }}>
+                <button 
+                  type="button" 
+                  className="btn-secondary" 
+                  onClick={() => { setIsVsEditModalOpen(false); setEditingVsMatch(null); }}
+                >
+                  취소
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn-primary-glow"
+                  disabled={isUpdatingVS}
+                >
+                  {isUpdatingVS ? '수정 중...' : '수정하기'}
+                </button>
               </div>
             </form>
           </div>

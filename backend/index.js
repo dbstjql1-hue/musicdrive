@@ -192,6 +192,149 @@ app.post('/api/songs', upload, async (req, res) => {
   }
 });
 
+// 3.5. 음원 정보 수정 (PUT /api/songs/:id) - 관리자용
+app.put('/api/songs/:id', upload, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, artist, lyrics, category, adminPassword } = req.body;
+
+    // 관리자 비밀번호 검증
+    const expectedPassword = process.env.ADMIN_PASSWORD || 'admin1234';
+    if (adminPassword !== expectedPassword) {
+      return res.status(403).json({ error: '관리자 인증 비밀번호가 일치하지 않습니다.' });
+    }
+
+    if (!title || !artist) {
+      return res.status(400).json({ error: '곡 제목과 아티스트 이름은 필수입니다.' });
+    }
+
+    // 기존 음원 정보 조회
+    const { data: existingSong, error: getErr } = await supabase
+      .from('songs')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (getErr || !existingSong) {
+      return res.status(404).json({ error: '해당 음원을 찾을 수 없습니다.' });
+    }
+
+    let coverUrl = existingSong.cover_url;
+    const coverFile = req.files && req.files.cover ? req.files.cover[0] : null;
+
+    if (coverFile) {
+      // 신규 앨범 커버 업로드
+      const timestamp = Date.now();
+      const cleanFileName = (name) => name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
+      const coverPath = `${timestamp}_${cleanFileName(coverFile.originalname)}`;
+      
+      const { data: coverUpload, error: coverErr } = await supabase.storage
+        .from('covers')
+        .upload(coverPath, coverFile.buffer, {
+          contentType: coverFile.mimetype,
+          upsert: true
+        });
+
+      if (coverErr) throw coverErr;
+
+      // 신규 커버 URL 획득
+      const { data: coverUrlData } = supabase.storage.from('covers').getPublicUrl(coverPath);
+      coverUrl = coverUrlData.publicUrl;
+
+      // 기존에 업로드했던 커버 파일이 있다면 삭제 (Unsplash 기본 플레이스홀더 이미지는 제외)
+      if (existingSong.cover_url && existingSong.cover_url.includes('/object/public/covers/')) {
+        const oldCoverName = existingSong.cover_url.split('/object/public/covers/')[1];
+        if (oldCoverName) {
+          await supabase.storage.from('covers').remove([oldCoverName]).catch(err => {
+            console.error('기존 커버 삭제 실패:', err.message);
+          });
+        }
+      }
+    }
+
+    // 데이터베이스 업데이트
+    const { data: updatedSong, error: dbErr } = await supabase
+      .from('songs')
+      .update({
+        title,
+        artist,
+        cover_url: coverUrl,
+        lyrics: lyrics || '',
+        category: category || '일반'
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (dbErr) throw dbErr;
+
+    res.json(updatedSong);
+  } catch (err) {
+    console.error('음원 수정 오류:', err);
+    res.status(500).json({ error: `음원 수정 실패: ${err.message || err}` });
+  }
+});
+
+// 3.6. 음원 삭제 (DELETE /api/songs/:id) - 관리자용
+app.delete('/api/songs/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { adminPassword } = req.body;
+    const password = adminPassword || req.query.adminPassword;
+
+    // 관리자 비밀번호 검증
+    const expectedPassword = process.env.ADMIN_PASSWORD || 'admin1234';
+    if (password !== expectedPassword) {
+      return res.status(403).json({ error: '관리자 인증 비밀번호가 일치하지 않습니다.' });
+    }
+
+    // 기존 음원 정보 조회 (삭제 전 파일 경로 획득 목적)
+    const { data: song, error: getErr } = await supabase
+      .from('songs')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (getErr || !song) {
+      return res.status(404).json({ error: '해당 음원을 찾을 수 없습니다.' });
+    }
+
+    // 데이터베이스 행 삭제 (likes 및 playlist_songs는 DB 제약조건에 의해 자동 연쇄 삭제됨)
+    const { error: dbErr } = await supabase
+      .from('songs')
+      .delete()
+      .eq('id', id);
+
+    if (dbErr) throw dbErr;
+
+    // 오디오 파일 스토리지 삭제
+    if (song.audio_url && song.audio_url.includes('/object/public/songs/')) {
+      const audioFileName = song.audio_url.split('/object/public/songs/')[1];
+      if (audioFileName) {
+        await supabase.storage.from('songs').remove([audioFileName]).catch(err => {
+          console.error('오디오 파일 삭제 실패:', err.message);
+        });
+      }
+    }
+
+    // 커버 파일 스토리지 삭제
+    if (song.cover_url && song.cover_url.includes('/object/public/covers/')) {
+      const coverFileName = song.cover_url.split('/object/public/covers/')[1];
+      if (coverFileName) {
+        await supabase.storage.from('covers').remove([coverFileName]).catch(err => {
+          console.error('커버 파일 삭제 실패:', err.message);
+        });
+      }
+    }
+
+    res.json({ success: true, message: '음원이 성공적으로 삭제되었습니다.' });
+  } catch (err) {
+    console.error('음원 삭제 오류:', err);
+    res.status(500).json({ error: `음원 삭제 실패: ${err.message || err}` });
+  }
+});
+
+
 // 4. 곡 재생 횟수 증가 (POST /api/songs/:id/play)
 app.post('/api/songs/:id/play', async (req, res) => {
   try {
@@ -420,6 +563,250 @@ app.delete('/api/playlists/:id/songs/:songId', async (req, res) => {
     res.status(500).json({ error: '플레이리스트에서 곡을 제거하지 못했습니다.' });
   }
 });
+
+
+// ==========================================
+// VS 대결 투표 API 엔드포인트
+// ==========================================
+
+// 1. VS 대결 목록 조회 (GET /api/vs-matches)
+app.get('/api/vs-matches', async (req, res) => {
+  try {
+    const { sessionId } = req.query;
+
+    // 1) 전체 대결 가져오기
+    const { data: matches, error: matchesErr } = await supabase
+      .from('vs_matches')
+      .select(`
+        *,
+        song1:song1_id(*),
+        song2:song2_id(*)
+      `)
+      .order('created_at', { ascending: false });
+
+    if (matchesErr) throw matchesErr;
+
+    if (!matches || matches.length === 0) {
+      return res.json([]);
+    }
+
+    // 2) 각 대결에 대한 투표 집계 정보 및 세션별 투표 여부 취합
+    const matchesWithVotes = await Promise.all(matches.map(async (match) => {
+      // Song 1 투표 수
+      const { count: vote1Count, error: err1 } = await supabase
+        .from('vs_votes')
+        .select('*', { count: 'exact', head: true })
+        .eq('match_id', match.id)
+        .eq('song_id', match.song1_id);
+
+      if (err1) throw err1;
+
+      // Song 2 투표 수
+      const { count: vote2Count, error: err2 } = await supabase
+        .from('vs_votes')
+        .select('*', { count: 'exact', head: true })
+        .eq('match_id', match.id)
+        .eq('song_id', match.song2_id);
+
+      if (err2) throw err2;
+
+      // 현재 사용자가 투표했는지 여부 확인
+      let userVotedSongId = null;
+      if (sessionId) {
+        const { data: userVote, error: voteErr } = await supabase
+          .from('vs_votes')
+          .select('song_id')
+          .eq('match_id', match.id)
+          .eq('session_id', sessionId)
+          .maybeSingle();
+
+        if (voteErr) throw voteErr;
+        if (userVote) {
+          userVotedSongId = userVote.song_id;
+        }
+      }
+
+      return {
+        ...match,
+        song1_votes: vote1Count || 0,
+        song2_votes: vote2Count || 0,
+        user_voted_song_id: userVotedSongId
+      };
+    }));
+
+    res.json(matchesWithVotes);
+  } catch (err) {
+    console.error('VS 대결 목록 조회 오류:', err.message);
+    res.status(500).json({ error: 'VS 대결 목록을 가져올 수 없습니다.' });
+  }
+});
+
+// 2. VS 대결 생성 (POST /api/vs-matches) - 관리자용
+app.post('/api/vs-matches', async (req, res) => {
+  try {
+    const { title, description, song1_id, song2_id, adminPassword } = req.body;
+
+    // 관리자 비밀번호 검증
+    const expectedPassword = process.env.ADMIN_PASSWORD || 'admin1234';
+    if (adminPassword !== expectedPassword) {
+      return res.status(403).json({ error: '관리자 인증 비밀번호가 일치하지 않습니다.' });
+    }
+
+    if (!title || !song1_id || !song2_id) {
+      return res.status(400).json({ error: '대결 제목 및 두 곡의 ID는 필수입니다.' });
+    }
+
+    const { data: newMatch, error } = await supabase
+      .from('vs_matches')
+      .insert([
+        {
+          title,
+          description: description || '',
+          song1_id,
+          song2_id
+        }
+      ])
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(newMatch);
+  } catch (err) {
+    console.error('VS 대결 생성 오류:', err.message);
+    res.status(500).json({ error: 'VS 대결을 생성할 수 없습니다.' });
+  }
+});
+
+// 3. VS 대결 투표 처리 (POST /api/vs-matches/:id/vote)
+app.post('/api/vs-matches/:id/vote', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { songId, sessionId } = req.body;
+
+    if (!songId || !sessionId) {
+      return res.status(400).json({ error: 'songId 및 sessionId는 필수입니다.' });
+    }
+
+    // 이미 투표했는지 확인
+    const { data: existingVote, error: checkErr } = await supabase
+      .from('vs_votes')
+      .select('*')
+      .eq('match_id', id)
+      .eq('session_id', sessionId)
+      .maybeSingle();
+
+    if (checkErr) throw checkErr;
+
+    if (existingVote) {
+      // 투표 취소 또는 변경 기능 지원 (여기서는 다른 곡 클릭 시 업데이트, 동일 곡 클릭 시 취소로 처리)
+      if (existingVote.song_id === songId) {
+        // 투표 취소
+        const { error: deleteErr } = await supabase
+          .from('vs_votes')
+          .delete()
+          .eq('match_id', id)
+          .eq('session_id', sessionId);
+
+        if (deleteErr) throw deleteErr;
+        return res.json({ success: true, voted: false, songId: null });
+      } else {
+        // 다른 곡으로 투표 변경
+        const { data: updatedVote, error: updateErr } = await supabase
+          .from('vs_votes')
+          .update({ song_id: songId })
+          .eq('match_id', id)
+          .eq('session_id', sessionId)
+          .select()
+          .single();
+
+        if (updateErr) throw updateErr;
+        return res.json({ success: true, voted: true, songId: updatedVote.song_id });
+      }
+    } else {
+      // 신규 투표 등록
+      const { data: newVote, error: insertErr } = await supabase
+        .from('vs_votes')
+        .insert([
+          {
+            match_id: id,
+            song_id: songId,
+            session_id: sessionId
+          }
+        ])
+        .select()
+        .single();
+
+      if (insertErr) throw insertErr;
+      res.status(201).json({ success: true, voted: true, songId: newVote.song_id });
+    }
+  } catch (err) {
+    console.error('VS 투표 처리 오류:', err.message);
+    res.status(500).json({ error: '투표를 처리할 수 없습니다.' });
+  }
+});
+
+// 4. VS 대결 삭제 (DELETE /api/vs-matches/:id) - 관리자용
+app.delete('/api/vs-matches/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { adminPassword } = req.body;
+    const password = adminPassword || req.query.adminPassword;
+
+    // 관리자 비밀번호 검증
+    const expectedPassword = process.env.ADMIN_PASSWORD || 'admin1234';
+    if (password !== expectedPassword) {
+      return res.status(403).json({ error: '관리자 인증 비밀번호가 일치하지 않습니다.' });
+    }
+
+    const { error } = await supabase
+      .from('vs_matches')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    res.json({ success: true, message: 'VS 대결이 성공적으로 삭제되었습니다.' });
+  } catch (err) {
+    console.error('VS 대결 삭제 오류:', err.message);
+    res.status(500).json({ error: 'VS 대결을 삭제할 수 없습니다.' });
+  }
+});
+
+// 5. VS 대결 수정 (PUT /api/vs-matches/:id) - 관리자용
+app.put('/api/vs-matches/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, song1_id, song2_id, adminPassword } = req.body;
+
+    // 관리자 비밀번호 검증
+    const expectedPassword = process.env.ADMIN_PASSWORD || 'admin1234';
+    if (adminPassword !== expectedPassword) {
+      return res.status(403).json({ error: '관리자 인증 비밀번호가 일치하지 않습니다.' });
+    }
+
+    if (!title || !song1_id || !song2_id) {
+      return res.status(400).json({ error: '대결 제목 및 두 곡의 ID는 필수입니다.' });
+    }
+
+    const { data: updatedMatch, error } = await supabase
+      .from('vs_matches')
+      .update({
+        title,
+        description: description || '',
+        song1_id,
+        song2_id
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(updatedMatch);
+  } catch (err) {
+    console.error('VS 대결 수정 오류:', err.message);
+    res.status(500).json({ error: 'VS 대결을 수정할 수 없습니다.' });
+  }
+});
+
 
 // 진단 API 엔드포인트 (GET /api/diagnose)
 app.get('/api/diagnose', async (req, res) => {

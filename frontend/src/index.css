@@ -202,6 +202,77 @@ body {
   pointer-events: none;
 }
 
+/* Home Hero Banner Specific Styles with Mascot Integration */
+.hero-banner.home-hero {
+  background: linear-gradient(135deg, #261546 0%, #150926 100%);
+  display: flex;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+  padding: 48px;
+}
+
+.hero-banner.home-hero::after {
+  /* Reduce overlay glow to let mascot pop */
+  opacity: 0.5;
+}
+
+.hero-content {
+  position: relative;
+  z-index: 2;
+  max-width: 55%;
+}
+
+.hero-mascot-bg {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 55%;
+  background-repeat: no-repeat;
+  background-position: right center;
+  background-size: contain;
+  z-index: 1;
+  pointer-events: none;
+  transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+  /* Subtly mask the left edge to blend seamlessly with the solid gradient */
+  mask-image: linear-gradient(to right, transparent 0%, black 15%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 15%);
+}
+
+/* Hover micro-animation */
+.hero-banner.home-hero:hover .hero-mascot-bg {
+  transform: scale(1.04) translateX(-5px);
+}
+
+/* Responsiveness */
+@media (max-width: 1024px) {
+  .hero-content {
+    max-width: 70%;
+  }
+  .hero-mascot-bg {
+    width: 45%;
+  }
+}
+
+@media (max-width: 768px) {
+  .hero-banner.home-hero {
+    padding: 32px;
+  }
+  .hero-content {
+    max-width: 100%;
+    z-index: 2;
+  }
+  /* On mobile, fade out the mascot more to focus on text readability */
+  .hero-mascot-bg {
+    width: 100%;
+    opacity: 0.25;
+    mask-image: linear-gradient(to top, transparent 0%, black 100%);
+    -webkit-mask-image: linear-gradient(to top, transparent 0%, black 100%);
+  }
+}
+
+
 .hero-tag {
   font-size: 12px;
   font-weight: 700;
@@ -1010,3 +1081,339 @@ body {
   from { top: -50px; opacity: 0; }
   to { top: 24px; opacity: 1; }
 }
+
+/* Admin Edit/Delete Action Styles */
+.icon-btn.edit-btn:hover {
+  color: var(--secondary) !important;
+  filter: drop-shadow(0 0 6px var(--secondary-glow));
+}
+
+.icon-btn.delete-btn:hover {
+  color: #ff4d6d !important;
+  filter: drop-shadow(0 0 6px rgba(255, 77, 109, 0.4));
+}
+
+.card-admin-overlay {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 8px;
+  background-color: rgba(7, 7, 10, 0.8);
+  backdrop-filter: blur(8px);
+  padding: 6px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  z-index: 10;
+  opacity: 0;
+  transform: translateY(-5px);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.song-card:hover .card-admin-overlay {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.card-admin-overlay .icon-btn {
+  color: var(--text-secondary);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: var(--transition);
+}
+
+/* ==========================================
+   VS Match Page Styles
+   ========================================== */
+
+.vs-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 32px;
+  margin-top: 16px;
+  margin-bottom: 48px;
+}
+
+@media (min-width: 1024px) {
+  .vs-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.vs-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  padding: 32px;
+  position: relative;
+  transition: var(--transition);
+  box-shadow: var(--shadow-premium);
+}
+
+.vs-card:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.vs-admin-actions {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  gap: 12px;
+  z-index: 10;
+}
+
+.vs-action-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vs-action-btn.edit:hover {
+  color: var(--secondary);
+  filter: drop-shadow(0 0 6px var(--secondary-glow));
+}
+
+.vs-action-btn.delete:hover {
+  color: #ff4d6d;
+  filter: drop-shadow(0 0 6px rgba(255, 77, 109, 0.4));
+}
+
+.vs-card-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 32px;
+  text-align: center;
+  letter-spacing: -0.5px;
+}
+
+.vs-layout-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+  margin-bottom: 40px;
+  flex-wrap: wrap;
+}
+
+.vs-song-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 200px;
+  flex-shrink: 0;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid transparent;
+  transition: var(--transition);
+}
+
+.vs-song-section.voted {
+  background-color: rgba(157, 78, 221, 0.05);
+  border-color: rgba(157, 78, 221, 0.3);
+  box-shadow: 0 0 20px rgba(157, 78, 221, 0.1);
+}
+
+.vs-img-container {
+  width: 140px;
+  height: 140px;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.vs-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: var(--transition);
+}
+
+.vs-img-container:hover .vs-cover-img {
+  transform: scale(1.08);
+}
+
+.vs-play-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  opacity: 0;
+  transition: var(--transition);
+}
+
+.vs-img-container:hover .vs-play-overlay {
+  opacity: 1;
+}
+
+.vs-play-btn-glow {
+  background-color: var(--primary);
+  color: var(--text-primary);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 0 15px var(--primary);
+  transform: scale(0.9);
+  transition: var(--transition);
+}
+
+.vs-img-container:hover .vs-play-btn-glow {
+  transform: scale(1);
+}
+
+.vs-song-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vs-song-title {
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.vs-song-artist {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.vs-vote-button {
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: 30px;
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  margin-top: 8px;
+}
+
+.vs-vote-button:hover {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  box-shadow: 0 0 10px var(--primary-glow);
+}
+
+.vs-vote-button.active {
+  background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%);
+  border-color: transparent;
+  color: var(--text-primary);
+  box-shadow: 0 0 15px var(--primary-glow);
+}
+
+.vs-middle-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.vs-badge {
+  background: linear-gradient(135deg, #f72585 0%, #7209b7 100%);
+  color: var(--text-primary);
+  font-family: var(--font-outfit);
+  font-size: 20px;
+  font-weight: 800;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 0 20px rgba(247, 37, 133, 0.4);
+  letter-spacing: -0.5px;
+  animation: pulseVS 2s infinite alternate;
+}
+
+@keyframes pulseVS {
+  from { transform: scale(1); box-shadow: 0 0 20px rgba(247, 37, 133, 0.4); }
+  to { transform: scale(1.08); box-shadow: 0 0 30px rgba(247, 37, 133, 0.6); }
+}
+
+.vs-progress-section {
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vs-progress-bar-container {
+  height: 24px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  position: relative;
+}
+
+.vs-progress-fill {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  transition: width 0.6s cubic-bezier(0.25, 0.8, 0.25, 1);
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+
+.vs-progress-fill.song1-fill {
+  background: linear-gradient(90deg, #9d4edd 0%, #7b2cbf 100%);
+  justify-content: flex-start;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: inset -5px 0 10px rgba(0, 0, 0, 0.2);
+}
+
+.vs-progress-fill.song2-fill {
+  background: linear-gradient(90deg, #3a86c8 0%, #3f37c9 100%);
+  justify-content: flex-end;
+  box-shadow: inset 5px 0 10px rgba(0, 0, 0, 0.2);
+}
+
+.pct-label {
+  font-family: var(--font-outfit);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text-primary);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.vs-votes-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 0 4px;
+}
+
+
