@@ -342,6 +342,50 @@ function App() {
     setIsPlaying(false);
   };
 
+  const verifyAdminForSync = async (passwordInput) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ adminPassword: passwordInput })
+      });
+      
+      const data = await res.json();
+      if (res.ok) {
+        setIsAdminAuthenticated(true);
+        setAdminPassword(passwordInput);
+        showToast('관리자 인증에 성공했습니다.');
+        
+        setTimeout(() => {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+          setCurrentTime(0);
+          setIsPlaying(false);
+          
+          const rawLines = activeSong.lyrics.split('\n')
+            .map(line => {
+              const trimmed = line.trim();
+              const lrcRegex = /^\[\d{2}:\d{2}(?:\.\d{2,3})?\](.*)/;
+              const match = trimmed.match(lrcRegex);
+              return match ? match[1].trim() : trimmed;
+            })
+            .filter(line => line !== '');
+            
+          setRecordedTimes(new Array(rawLines.length).fill(null));
+          setSyncIndex(0);
+          setIsSyncEditing(true);
+        }, 100);
+      } else {
+        showToast(data.error || '비밀번호가 올바르지 않습니다.');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('서버 연결에 실패했습니다.');
+    }
+  };
+
   // Toast 알림 헬퍼
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -1879,11 +1923,19 @@ function App() {
         <div className="lyrics-header">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
             <h3>가사</h3>
-            {isAdminAuthenticated && !isSyncEditing && (
+            {!isSyncEditing && (
               <button 
                 type="button" 
                 className="sync-edit-trigger-btn"
-                onClick={startSyncEditing}
+                onClick={() => {
+                  if (isAdminAuthenticated) {
+                    startSyncEditing();
+                  } else {
+                    const pass = window.prompt("가사 싱크를 편집하려면 관리자 비밀번호를 입력하세요:");
+                    if (pass === null) return; // 취소
+                    verifyAdminForSync(pass);
+                  }
+                }}
               >
                 ⏱️ 싱크 맞추기 (관리자)
               </button>
