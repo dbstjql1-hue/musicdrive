@@ -187,18 +187,27 @@ function App() {
     return activeIdx;
   }, [parsedLyrics, currentTime]);
 
-  // 가사 활성화 시 해당 가사 요소를 컨테이너의 중앙으로 부드럽게 스크롤
-  useEffect(() => {
-    if (!isLyricsOpen || currentLyricIndex === -1 || !lyricsBodyRef.current) return;
+  // 화면에 3~4줄 단위로 콤팩트하게 노출할 가사 목록 (현재 인덱스 중심 슬라이싱)
+  const displayedLyrics = useMemo(() => {
+    if (parsedLyrics.length === 0) return [];
     
-    const activeEl = lyricsBodyRef.current.children[currentLyricIndex];
-    if (activeEl) {
-      activeEl.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center'
-      });
+    const activeIdx = currentLyricIndex === -1 ? 0 : currentLyricIndex;
+    
+    // 현재 줄이 위에서 2번째에 위치하도록 계산 (이전 1줄, 현재 1줄, 이후 2줄)
+    let startIdx = activeIdx - 1;
+    if (startIdx < 0) startIdx = 0;
+    
+    let endIdx = startIdx + 4;
+    if (endIdx > parsedLyrics.length) {
+      endIdx = parsedLyrics.length;
+      startIdx = Math.max(0, endIdx - 4);
     }
-  }, [currentLyricIndex, isLyricsOpen]);
+    
+    return parsedLyrics.slice(startIdx, endIdx).map((line, idx) => ({
+      ...line,
+      absIdx: startIdx + idx
+    }));
+  }, [parsedLyrics, currentLyricIndex]);
 
   // 가사 싱크 실시간 레코딩을 위한 키 입력 리스너 (Spacebar)
   useEffect(() => {
@@ -1943,11 +1952,11 @@ function App() {
         ) : (
           <div className="lyrics-body" ref={lyricsBodyRef}>
             {activeSong && activeSong.lyrics ? (
-              parsedLyrics.length > 0 ? (
-                parsedLyrics.map((line, idx) => (
+              displayedLyrics.length > 0 ? (
+                displayedLyrics.map((line) => (
                   <div 
-                    className={`lyrics-line ${idx === currentLyricIndex ? 'active' : ''} clickable`} 
-                    key={idx}
+                    className={`lyrics-line ${line.absIdx === currentLyricIndex ? 'active' : ''} clickable`} 
+                    key={line.absIdx}
                     onClick={() => {
                       if (line.time !== null) {
                         audioRef.current.currentTime = line.time;
