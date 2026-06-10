@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Home,
   Search,
@@ -46,7 +46,7 @@ function App() {
   const [songs, setSongs] = useState([]);
   const [playlists, setPlaylists] = useState([]);
   const [likedSongIds, setLikedSongIds] = useState([]);
-  const [categories, setCategories] = useState(['전체', '발라드', '댄스', '힙합', '케이팝', '펑크', '트로트', '재즈', '기타']);
+  const [categories] = useState(['전체', '발라드', '댄스', '힙합', '케이팝', '펑크', '트로트', '재즈', '기타']);
   
   // Active Filter / Search
   const [selectedCategory, setSelectedCategory] = useState('전체');
@@ -358,7 +358,7 @@ function App() {
     fetchVSMatches();
   }, []);
 
-  const fetchVSMatches = async () => {
+  async function fetchVSMatches() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/vs-matches?sessionId=${sessionId}`);
       if (res.ok) {
@@ -512,7 +512,7 @@ function App() {
     }
   };
 
-  const fetchSongs = async (query = '', category = '') => {
+  async function fetchSongs(query = '', category = '') {
     try {
       let url = `${API_BASE_URL}/api/songs`;
       const params = [];
@@ -530,7 +530,7 @@ function App() {
     }
   };
 
-  const fetchPlaylists = async () => {
+  async function fetchPlaylists() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/playlists`);
       if (res.ok) {
@@ -542,7 +542,7 @@ function App() {
     }
   };
 
-  const fetchLikedSongs = async () => {
+  async function fetchLikedSongs() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/songs/liked/${sessionId}`);
       if (res.ok) {
@@ -644,7 +644,7 @@ function App() {
     }
   };
 
-  const handleNextSong = () => {
+  function handleNextSong() {
     if (queue.length === 0) return;
     
     let nextIndex = queueIndex + 1;
@@ -660,7 +660,7 @@ function App() {
     incrementPlayCount(queue[nextIndex].id);
   };
 
-  const handlePrevSong = () => {
+  function handlePrevSong() {
     if (queue.length === 0) return;
 
     let prevIndex = queueIndex - 1;
