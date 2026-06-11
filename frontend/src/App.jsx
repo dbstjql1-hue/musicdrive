@@ -231,20 +231,6 @@ function App() {
     }));
   }, [parsedLyrics, currentLyricIndex]);
 
-  // 가사 싱크 실시간 레코딩을 위한 키 입력 리스너 (Spacebar)
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (!isSyncEditing) return;
-      if (e.code === 'Space') {
-        e.preventDefault();
-        recordSyncTimestamp();
-      }
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSyncEditing, recordSyncTimestamp]);
-
   const startSyncEditing = () => {
     if (!activeSong || !activeSong.lyrics) return;
     
@@ -294,6 +280,20 @@ function App() {
       setSyncIndex(syncIndex + 1);
     }
   }, [isSyncEditing, syncIndex, recordedTimes, isPlaying]);
+
+  // 가사 싱크 실시간 레코딩을 위한 키 입력 리스너 (Spacebar)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!isSyncEditing) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        recordSyncTimestamp();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSyncEditing, recordSyncTimestamp]);
 
   const saveSyncedLyrics = async () => {
     if (!activeSong) return;
