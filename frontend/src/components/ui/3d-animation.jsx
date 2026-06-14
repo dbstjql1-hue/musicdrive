@@ -13,14 +13,8 @@ export const PoemAnimation = ({ poemHTML, backgroundImageUrl, boyImageUrl, onEnt
             if (contentRef.current) {
                 const viewportWidth = window.innerWidth;
                 const baseWidth = 1000;
-                // If the viewport is smaller, we let CSS media queries handle mostly, 
-                // but we can optionally scale. For mobile, it's better to rely on CSS.
-                if (viewportWidth > 768) {
-                    const scaleFactor = viewportWidth < baseWidth ? (viewportWidth / baseWidth) * 0.9 : 1;
-                    contentRef.current.style.transform = `scale(${scaleFactor})`;
-                } else {
-                    contentRef.current.style.transform = `scale(1)`;
-                }
+                const scaleFactor = viewportWidth < baseWidth ? (viewportWidth / baseWidth) * 0.9 : 1;
+                contentRef.current.style.transform = `scale(${scaleFactor})`;
             }
         }
 
@@ -30,18 +24,19 @@ export const PoemAnimation = ({ poemHTML, backgroundImageUrl, boyImageUrl, onEnt
     }, []);
 
     return (
-        <header className="hero-section">
+        <header className="hero-section" onClick={onEnter} style={{ cursor: 'pointer' }}>
             <div className="container">
                 <div 
                     ref={contentRef} 
                     className="content" 
+                    style={{ display: 'block', width: '1000px', height: '562px' }}
                 >
                     <div className="container-full">
                         <div className="animated hue"></div>
                         <img className="backgroundImage" src={backgroundImageUrl} alt="An old stone courtyard at dawn" onError={(e) => e.target.style.display = 'none'} />
                         <img className="boyImage" src={boyImageUrl} alt="A man and woman practicing with swords" onError={(e) => e.target.style.display = 'none'} />
                         
-                        <div className="cube-wrapper">
+                        <div className="container">
                             <div className="cube">
                                 <div className="face top"></div>
                                 <div className="face bottom"></div>
@@ -64,10 +59,6 @@ export const PoemAnimation = ({ poemHTML, backgroundImageUrl, boyImageUrl, onEnt
                         </div>
                     </div>
                 </div>
-                
-                <button className="enter-button" onClick={onEnter}>
-                    Enter App
-                </button>
             </div>
         </header>
     );

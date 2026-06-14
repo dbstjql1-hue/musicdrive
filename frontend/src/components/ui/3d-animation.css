@@ -59,7 +59,7 @@
   pointer-events: none;
 }
 
-.hero-section .cube-wrapper {
+.hero-section .container-full > .container {
   position: absolute;
   top: 15%;
   left: 5%;
@@ -176,7 +176,7 @@
     height: 100vh;
   }
   
-  .hero-section .cube-wrapper {
+  .hero-section .container-full > .container {
     top: 15%;
     left: 50%;
     margin-left: -125px;
