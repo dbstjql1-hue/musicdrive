@@ -24,7 +24,7 @@ export const PoemAnimation = ({ poemHTML, backgroundImageUrl, boyImageUrl, onEnt
     }, []);
 
     return (
-        <header className="hero-section" onClick={onEnter} style={{ cursor: 'pointer' }}>
+        <header className="hero-section">
             <div className="container">
                 <div 
                     ref={contentRef} 
@@ -59,6 +59,9 @@ export const PoemAnimation = ({ poemHTML, backgroundImageUrl, boyImageUrl, onEnt
                         </div>
                     </div>
                 </div>
+                <button className="enter-button" onClick={onEnter}>
+                    로그인 입장
+                </button>
             </div>
         </header>
     );
