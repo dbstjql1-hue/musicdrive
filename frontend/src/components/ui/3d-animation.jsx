@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { HoverButton } from './hover-glow-button';
 import './3d-animation.css';
 
 /**
@@ -59,9 +60,16 @@ export const PoemAnimation = ({ poemHTML, backgroundImageUrl, boyImageUrl, onEnt
                         </div>
                     </div>
                 </div>
-                <button className="enter-button" onClick={onEnter}>
-                    로그인 입장
-                </button>
+                <HoverButton 
+                    className="enter-button" 
+                    onClick={onEnter}
+                    glowColor="#00ffc3"
+                    backgroundColor="#000"
+                    textColor="#ffffff"
+                    hoverTextColor="#67e8f9"
+                >
+                    ENTER MUSICDRIVE
+                </HoverButton>
             </div>
         </header>
     );

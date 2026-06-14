@@ -78,6 +78,8 @@
   align-items: center;
   justify-content: center;
   transform-style: preserve-3d;
+  position: relative;
+  z-index: 3;
 }
 
 /* The static 3D cube structure */
@@ -152,15 +154,15 @@
 /* scrolling animation for text on the cube faces */
 .hero-section .left p {
   margin-left: 480px;
-  animation: 200s linear infinite left;
+  animation: 500s linear infinite left;
 }
 .hero-section .back p {
   margin-left: -390px;
-  animation: 200s linear infinite back;
+  animation: 500s linear infinite back;
 }
 .hero-section .right p {
   margin-left: -1260px;
-  animation: 200s linear infinite right;
+  animation: 500s linear infinite right;
 }
 
 @keyframes left {
@@ -187,6 +189,7 @@
   opacity: 0.15;
   filter: blur(6px);
   transform-style: preserve-3d;
+  z-index: 3;
 }
 
 /* Shifting color gradient overlay */

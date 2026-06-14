@@ -1141,7 +1141,7 @@ function App() {
   };
 
   const introPoemHTML = `
-    <p>Welcome to <span>MusicDrive</span>, your ultimate destination for boundless melodies and rhythm. Dive into a world where every <span>beat</span> sparks a memory, every lyric tells a story, and every song brings us closer together. Feel the <span>harmony</span> flow through your veins. Press <span>Play</span>.</p>
+    <p>Welcome to <span>MusicDrive</span>, your ultimate destination for boundless melodies and rhythm. Dive into a world where every <span>beat</span> sparks a memory, every lyric tells a story, and every song brings us closer together. Feel the <span>harmony</span> flow through your veins. Press <span>Play</span>.&nbsp;&nbsp;&nbsp;&nbsp;Welcome to <span>MusicDrive</span>, your ultimate destination for boundless melodies and rhythm. Dive into a world where every <span>beat</span> sparks a memory, every lyric tells a story, and every song brings us closer together. Feel the <span>harmony</span> flow through your veins. Press <span>Play</span>.&nbsp;&nbsp;&nbsp;&nbsp;Welcome to <span>MusicDrive</span>, your ultimate destination for boundless melodies and rhythm. Dive into a world where every <span>beat</span> sparks a memory, every lyric tells a story, and every song brings us closer together. Feel the <span>harmony</span> flow through your veins. Press <span>Play</span>.&nbsp;&nbsp;&nbsp;&nbsp;Welcome to <span>MusicDrive</span>, your ultimate destination for boundless melodies and rhythm. Dive into a world where every <span>beat</span> sparks a memory, every lyric tells a story, and every song brings us closer together. Feel the <span>harmony</span> flow through your veins. Press <span>Play</span>.</p>
   `;
 
   if (showIntro) {
