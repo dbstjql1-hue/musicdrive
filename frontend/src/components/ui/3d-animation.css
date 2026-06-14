@@ -33,7 +33,6 @@
   border-radius: 40px;
   animation: 200s linear infinite brightness;
   position: relative;
-  transform-style: preserve-3d;
 }
 
 /* container-full corresponds to CodePen's .container-full */
@@ -47,7 +46,6 @@
   transform: scale(1);
   animation: 200s linear infinite zoom-in;
   position: relative;
-  transform-style: preserve-3d;
 }
 
 .hero-section .backgroundImage {

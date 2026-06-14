@@ -67,6 +67,7 @@ export const PoemAnimation = ({ poemHTML, backgroundImageUrl, boyImageUrl, onEnt
                     backgroundColor="#000"
                     textColor="#ffffff"
                     hoverTextColor="#67e8f9"
+                    style={{ position: 'absolute' }}
                 >
                     ENTER MUSICDRIVE
                 </HoverButton>
