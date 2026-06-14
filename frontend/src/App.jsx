@@ -23,8 +23,10 @@ import {
   FolderHeart,
   Edit2,
   Trophy,
-  Clock
+  Clock,
+  Menu
 } from 'lucide-react';
+import { PoemAnimation } from './components/ui/3d-animation';
 import './App.css';
 import mascotImg from './assets/mascot.png';
 
@@ -42,6 +44,8 @@ function App() {
   // Navigation & Views
   const [currentView, setCurrentView] = useState('home'); // 'home', 'search', 'playlists', 'admin'
   const [selectedPlaylist, setSelectedPlaylist] = useState(null); // 특정 플레이리스트 선택 시 저장
+  const [showIntro, setShowIntro] = useState(true);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // Data State
   const [songs, setSongs] = useState([]);
@@ -1136,14 +1140,48 @@ function App() {
     }
   };
 
+  const introPoemHTML = `
+    <p>Welcome to <span>MusicDrive</span>, your ultimate destination for boundless melodies and rhythm. Dive into a world where every <span>beat</span> sparks a memory, every lyric tells a story, and every song brings us closer together. Feel the <span>harmony</span> flow through your veins. Press <span>Play</span>.</p>
+  `;
+
+  if (showIntro) {
+    return (
+      <PoemAnimation 
+        poemHTML={introPoemHTML}
+        backgroundImageUrl="https://i.ibb.co/q3XSxR9W/20250831-120144.jpg"
+        boyImageUrl="https://i.ibb.co/Y4FKvK38/20250831-113022.png"
+        onEnter={() => setShowIntro(false)}
+      />
+    );
+  }
+
+  const closeMobileMenu = () => setIsMobileMenuOpen(false);
+
   return (
     <div className="app-container">
       {/* Toast 알림 표시 */}
       {toastMessage && <div className="toast-msg">{toastMessage}</div>}
 
-      {/* Sidebar Navigation */}
-      <nav className="sidebar">
+      {/* Mobile Header */}
+      <div className="mobile-header" style={{ display: window.innerWidth > 768 ? 'none' : 'flex' }}>
         <div className="logo-section">
+          <Music className="logo-icon" size={24} />
+          <h1 style={{ fontSize: '18px', margin: 0 }}>musicdrive</h1>
+        </div>
+        <button className="hamburger-btn" onClick={() => setIsMobileMenuOpen(true)}>
+          <Menu size={24} />
+        </button>
+      </div>
+
+      {/* Mobile Overlay */}
+      <div 
+        className={`mobile-overlay ${isMobileMenuOpen ? 'active' : ''}`}
+        onClick={closeMobileMenu}
+      ></div>
+
+      {/* Sidebar Navigation */}
+      <nav className={`sidebar ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
+        <div className="logo-section" style={{ display: window.innerWidth <= 768 ? 'none' : 'flex' }}>
           <Music className="logo-icon" size={28} />
           <h1>musicdrive</h1>
         </div>
@@ -1151,7 +1189,7 @@ function App() {
           <li>
             <div 
               className={`nav-item ${currentView === 'home' && !selectedPlaylist ? 'active' : ''}`}
-              onClick={() => { setCurrentView('home'); setSelectedPlaylist(null); }}
+              onClick={() => { setCurrentView('home'); setSelectedPlaylist(null); closeMobileMenu(); }}
             >
               <Home className="icon" />
               <span>홈</span>
@@ -1160,7 +1198,7 @@ function App() {
           <li>
             <div 
               className={`nav-item ${currentView === 'search' ? 'active' : ''}`}
-              onClick={() => { setCurrentView('search'); setSelectedPlaylist(null); }}
+              onClick={() => { setCurrentView('search'); setSelectedPlaylist(null); closeMobileMenu(); }}
             >
               <Search className="icon" />
               <span>검색</span>
@@ -1169,7 +1207,7 @@ function App() {
           <li>
             <div 
               className={`nav-item ${currentView === 'playlists' || selectedPlaylist ? 'active' : ''}`}
-              onClick={() => { setCurrentView('playlists'); setSelectedPlaylist(null); }}
+              onClick={() => { setCurrentView('playlists'); setSelectedPlaylist(null); closeMobileMenu(); }}
             >
               <FolderHeart className="icon" />
               <span>플레이리스트</span>
@@ -1178,7 +1216,7 @@ function App() {
           <li>
             <div 
               className={`nav-item ${currentView === 'vs' ? 'active' : ''}`}
-              onClick={() => { setCurrentView('vs'); setSelectedPlaylist(null); }}
+              onClick={() => { setCurrentView('vs'); setSelectedPlaylist(null); closeMobileMenu(); }}
             >
               <Trophy className="icon" />
               <span>곡 대결 투표</span>
@@ -1187,7 +1225,7 @@ function App() {
           <li>
             <div 
               className={`nav-item ${currentView === 'admin' ? 'active' : ''}`}
-              onClick={() => { setCurrentView('admin'); setSelectedPlaylist(null); }}
+              onClick={() => { setCurrentView('admin'); setSelectedPlaylist(null); closeMobileMenu(); }}
             >
               <PlusCircle className="icon" />
               <span>음원 업로드</span>

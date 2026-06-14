@@ -1,0 +1,216 @@
+/* 3d-animation.css */
+.hero-section {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #07070a;
+  overflow: hidden;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+}
+
+.hero-section .container {
+  perspective: 1500px;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.hero-section .content {
+  position: relative;
+  transform-style: preserve-3d;
+  width: 1000px;
+  height: 562px;
+  max-width: 100vw;
+  max-height: 100vh;
+}
+
+.hero-section .container-full {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+}
+
+.hero-section .backgroundImage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.4;
+}
+
+.hero-section .boyImage {
+  position: absolute;
+  bottom: 0;
+  right: 5%;
+  height: 90%;
+  object-fit: contain;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.hero-section .cube-wrapper {
+  position: absolute;
+  top: 15%;
+  left: 5%;
+  width: 350px;
+  height: 350px;
+  transform-style: preserve-3d;
+}
+
+.hero-section .cube {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  animation: rotateCube 25s infinite linear;
+}
+
+.hero-section .face {
+  position: absolute;
+  width: 350px;
+  height: 350px;
+  background: rgba(10, 10, 15, 0.7);
+  border: 1px solid rgba(157, 78, 221, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  box-sizing: border-box;
+  color: #e0e0e0;
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: justify;
+  box-shadow: inset 0 0 40px rgba(0,0,0,0.8);
+  backdrop-filter: blur(4px);
+}
+
+.hero-section .face span {
+  color: #9d4edd;
+  font-weight: 700;
+  text-shadow: 0 0 8px rgba(157, 78, 221, 0.6);
+}
+
+.hero-section .face p {
+  margin: 0;
+}
+
+/* 350 / 2 = 175 */
+.hero-section .front  { transform: translateZ(175px); }
+.hero-section .back   { transform: rotateY(180deg) translateZ(175px); }
+.hero-section .right  { transform: rotateY(90deg) translateZ(175px); }
+.hero-section .left   { transform: rotateY(-90deg) translateZ(175px); }
+.hero-section .top    { transform: rotateX(90deg) translateZ(175px); }
+.hero-section .bottom { transform: rotateX(-90deg) translateZ(175px); }
+
+@keyframes rotateCube {
+  0% { transform: rotateY(0deg) rotateX(15deg); }
+  100% { transform: rotateY(360deg) rotateX(15deg); }
+}
+
+.hero-section .container-reflect {
+  position: absolute;
+  top: 15%;
+  left: 5%;
+  width: 350px;
+  height: 350px;
+  transform-style: preserve-3d;
+  transform: translateY(370px) scaleY(-1);
+  opacity: 0.15;
+  filter: blur(6px);
+}
+
+.animated.hue {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(45deg, rgba(157, 78, 221, 0.1), rgba(58, 134, 200, 0.1));
+  mix-blend-mode: overlay;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.enter-button {
+  position: absolute;
+  bottom: 8%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  background: rgba(157, 78, 221, 0.2);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(157, 78, 221, 0.5);
+  color: #fff;
+  padding: 14px 40px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 30px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  box-shadow: 0 0 15px rgba(157, 78, 221, 0.3);
+}
+
+.enter-button:hover {
+  background: rgba(157, 78, 221, 0.4);
+  transform: translateX(-50%) scale(1.05);
+  box-shadow: 0 0 25px rgba(157, 78, 221, 0.6);
+}
+
+/* Mobile Responsiveness for 3D Intro */
+@media (max-width: 768px) {
+  .hero-section .content {
+    width: 100vw;
+    height: 100vh;
+  }
+  
+  .hero-section .cube-wrapper {
+    top: 15%;
+    left: 50%;
+    margin-left: -125px;
+    width: 250px;
+    height: 250px;
+  }
+
+  .hero-section .face {
+    width: 250px;
+    height: 250px;
+    font-size: 11px;
+    padding: 15px;
+  }
+
+  .hero-section .front  { transform: translateZ(125px); }
+  .hero-section .back   { transform: rotateY(180deg) translateZ(125px); }
+  .hero-section .right  { transform: rotateY(90deg) translateZ(125px); }
+  .hero-section .left   { transform: rotateY(-90deg) translateZ(125px); }
+  .hero-section .top    { transform: rotateX(90deg) translateZ(125px); }
+  .hero-section .bottom { transform: rotateX(-90deg) translateZ(125px); }
+
+  .hero-section .container-reflect {
+    top: 15%;
+    left: 50%;
+    margin-left: -125px;
+    width: 250px;
+    height: 250px;
+    transform: translateY(270px) scaleY(-1);
+  }
+  
+  .hero-section .boyImage {
+    height: 50%;
+    right: -10%;
+    opacity: 0.7;
+    bottom: 5%;
+  }
+}

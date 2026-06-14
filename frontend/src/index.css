@@ -158,24 +158,125 @@ body {
 }
 
 @media (max-width: 768px) {
+  /* Sidebar Hamburger Menu */
   .sidebar {
-    width: 70px;
-    padding: 24px 8px;
-    align-items: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 250px;
+    z-index: 1000;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    padding-top: 24px;
   }
-  .logo-section h1, .nav-item span {
+  
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .mobile-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 999;
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+
+  .mobile-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Mobile Header */
+  .mobile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background-color: var(--bg-dark);
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .mobile-header .logo-section {
+    padding-bottom: 0;
+    border-bottom: none;
+    margin-bottom: 0;
+  }
+
+  .hamburger-btn {
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Main content */
+  .app-container {
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .main-content {
+    padding: 20px 16px;
+    height: calc(100vh - var(--player-height) - 60px); /* 60px for mobile header */
+  }
+
+  /* Mini Player styling */
+  .bottom-player {
+    height: 70px;
+    padding: 0 16px;
+    justify-content: space-between;
+  }
+
+  .player-song-info {
+    width: auto;
+    flex: 1;
+    min-width: 0;
+    margin-right: 12px;
+  }
+
+  .player-img {
+    width: 44px;
+    height: 44px;
+  }
+
+  .player-extras,
+  .progress-row {
+    display: none !important;
+  }
+
+  .player-controls-container {
+    width: auto;
+    flex-direction: row;
+  }
+
+  .controls-row {
+    gap: 16px;
+  }
+  
+  /* Show only play/pause and next */
+  .controls-row .control-btn:not(.play-pause-btn):not(.next-btn) {
     display: none;
   }
-  .logo-section {
-    padding-bottom: 20px;
-    justify-content: center;
-  }
-  .nav-item {
-    justify-content: center;
-    padding: 12px;
-  }
-  .main-content {
-    padding: 20px;
+
+  /* Grid adjustments */
+  .song-grid {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 16px;
   }
 }
 
