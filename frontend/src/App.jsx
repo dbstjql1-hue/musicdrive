@@ -1148,8 +1148,8 @@ function App() {
     return (
       <PoemAnimation 
         poemHTML={introPoemHTML}
-        backgroundImageUrl="https://i.ibb.co/q3XSxR9W/20250831-120144.jpg"
-        boyImageUrl="https://i.ibb.co/Y4FKvK38/20250831-113022.png"
+        backgroundImageUrl="/intro_bg.jpg"
+        boyImageUrl="/intro_character.png"
         onEnter={() => setShowIntro(false)}
       />
     );

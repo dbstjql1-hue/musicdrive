@@ -13,9 +13,13 @@ export const PoemAnimation = ({ poemHTML, backgroundImageUrl, boyImageUrl, onEnt
         function adjustContentSize() {
             if (contentRef.current) {
                 const viewportWidth = window.innerWidth;
-                const baseWidth = 1000;
-                const scaleFactor = viewportWidth < baseWidth ? (viewportWidth / baseWidth) * 0.9 : 1;
-                contentRef.current.style.transform = `scale(${scaleFactor})`;
+                if (viewportWidth > 768) {
+                    const baseWidth = 1000;
+                    const scaleFactor = viewportWidth < baseWidth ? (viewportWidth / baseWidth) * 0.9 : 1;
+                    contentRef.current.style.transform = `scale(${scaleFactor})`;
+                } else {
+                    contentRef.current.style.transform = '';
+                }
             }
         }
 

@@ -259,8 +259,87 @@
   transform: translateX(-50%) scale(0.98);
 }
 
-/* Ensure mobile button is highly visible and stays centered */
+/* Ensure mobile layout is fully optimized and responsive */
 @media (max-width: 768px) {
+  .hero-section .content {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+  }
+  
+  .hero-section .container-full {
+    width: 100vw;
+    height: 100vh;
+  }
+
+  .hero-section .backgroundImage {
+    width: 100vw;
+    height: 100vh;
+    object-fit: cover;
+  }
+
+  .hero-section .boyImage {
+    width: 100vw;
+    height: 60vh;
+    top: auto;
+    bottom: 0;
+    object-fit: cover;
+    object-position: top center;
+    z-index: 3;
+  }
+
+  /* Scale down the 3D cube for mobile viewports */
+  .hero-section .cube {
+    width: 320px;
+    height: 120px;
+    perspective: 300px;
+    perspective-origin: 50% 50%;
+  }
+
+  .hero-section .face {
+    width: 320px;
+    height: 120px;
+  }
+
+  .hero-section .face p {
+    font-size: calc(3em + 8px);
+    padding-top: 10px;
+  }
+
+  /* 3D transforms for mobile cube (width 320px -> half width is 160px) */
+  .hero-section .front {
+    transform: translateZ(160px);
+    display: none;
+  }
+  .hero-section .back {
+    transform: translateZ(-160px) rotateY(180deg) scaleX(-1);
+  }
+  .hero-section .left {
+    transform: translateX(-160px) rotateY(-90deg) scaleX(-1);
+  }
+  .hero-section .right {
+    transform: translateX(160px) rotateY(90deg) scaleX(-1);
+  }
+
+  /* Align scrolling starting positions for mobile cube */
+  .hero-section .left p {
+    margin-left: 160px;
+    animation: 500s linear infinite left;
+  }
+  .hero-section .back p {
+    margin-left: -160px;
+    animation: 500s linear infinite back;
+  }
+  .hero-section .right p {
+    margin-left: -480px;
+    animation: 500s linear infinite right;
+  }
+
+  /* Adjust reflection position for mobile cube */
+  .hero-section .container-reflect {
+    margin-top: 240px;
+  }
+
   .enter-button {
     bottom: 12%;
     padding: 12px 36px;
