@@ -1366,8 +1366,8 @@ function App() {
                 <div className="section-header">
                   <h2>인기 곡 목록</h2>
                 </div>
-                <div className="song-list-premium">
-                  {songs.slice().sort((a, b) => (b.play_count || 0) - (a.play_count || 0)).slice(0, 5).map((song, idx) => (
+                <div className="song-list-premium" style={{ maxHeight: '380px', overflowY: 'auto', paddingRight: '6px' }}>
+                  {songs.slice().sort((a, b) => (b.play_count || 0) - (a.play_count || 0)).map((song, idx) => (
                     <div className="song-row" key={song.id} onClick={() => playSingleSong(song)}>
                       <div className="row-index">{idx + 1}</div>
                       <img className="row-img" src={song.cover_url} alt={song.title} />
