@@ -730,6 +730,18 @@ function App() {
     incrementPlayCount(song.id);
   };
 
+  const playRandomSong = () => {
+    if (songs.length === 0) return;
+    const randomIndex = Math.floor(Math.random() * songs.length);
+    const randomSong = songs[randomIndex];
+    setQueue(songs);
+    setQueueIndex(randomIndex);
+    setActiveSong(randomSong);
+    setIsPlaying(true);
+    setIsShuffled(true);
+    incrementPlayCount(randomSong.id);
+  };
+
   const handlePlayPause = () => {
     if (!activeSong && songs.length > 0) {
       playSingleSong(songs[0]);
@@ -1328,9 +1340,9 @@ function App() {
                       마음껏 들으시고 좋은 음악이 있다면 플레이리스트에 담아가세요!
                     </p>
                     {songs.length > 0 && (
-                      <button className="play-btn-premium" onClick={() => playSingleSong(songs[0])}>
-                        <Play size={18} fill="currentColor" />
-                        첫 번째 곡 듣기
+                      <button className="play-btn-premium" onClick={playRandomSong}>
+                        <Shuffle size={18} />
+                        랜덤 듣기
                       </button>
                     )}
                   </div>
