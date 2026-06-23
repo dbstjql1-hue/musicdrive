@@ -1014,6 +1014,19 @@ function App() {
       return;
     }
 
+    // 파일 용량 체크 (15MB 제한) - Cloudtype 메모리 및 대역폭 제한 대비
+    const MAX_FILE_SIZE = 15 * 1024 * 1024;
+    if (audioFile.size > MAX_FILE_SIZE) {
+      showToast('음원 파일 용량이 너무 큽니다 (15MB 초과). 원활한 스트리밍을 위해 용량을 줄여주세요.');
+      return;
+    }
+
+    // WAV 파일 차단 (대역폭 초과 및 메모리 부족 방지)
+    if (audioFile.name.toLowerCase().endsWith('.wav') || audioFile.type === 'audio/wav') {
+      showToast('WAV 파일은 용량이 너무 커서 수파베이스 트래픽(Egress) 요금이 폭탄으로 나올 수 있습니다. 반드시 .mp3 형식으로 변환해서 올려주세요!');
+      return;
+    }
+
     setIsUploading(true);
     const formData = new FormData();
     formData.append('title', uploadTitle);
