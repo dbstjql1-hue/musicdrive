@@ -167,15 +167,7 @@ function App() {
     }, 400);
   };
 
-  // Fullscreen lyrics auto scroll effect
-  useEffect(() => {
-    if (isFullscreenPlayerOpen && fullscreenTab === 'lyrics' && mobileLyricsListRef.current) {
-      const activeEl = mobileLyricsListRef.current.querySelector('.active');
-      if (activeEl) {
-        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }
-  }, [currentLyricIndex, isFullscreenPlayerOpen, fullscreenTab]);
+
 
   // 외부 클릭 시 자동 종료 타이머 팝오버 닫기
   useEffect(() => {
@@ -272,6 +264,16 @@ function App() {
       absIdx: startIdx + idx
     }));
   }, [parsedLyrics, currentLyricIndex]);
+
+  // Fullscreen lyrics auto scroll effect
+  useEffect(() => {
+    if (isFullscreenPlayerOpen && fullscreenTab === 'lyrics' && mobileLyricsListRef.current) {
+      const activeEl = mobileLyricsListRef.current.querySelector('.active');
+      if (activeEl) {
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [currentLyricIndex, isFullscreenPlayerOpen, fullscreenTab]);
 
   const startSyncEditing = () => {
     if (!activeSong || !activeSong.lyrics) return;
