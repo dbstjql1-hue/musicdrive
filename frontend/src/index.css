@@ -1844,3 +1844,693 @@ body {
 }
 
 
+
+/* ==========================================
+   프리미엄 지니 스타일 전체화면 모달 플레이어 CSS
+   ========================================== */
+
+/* 전체 화면 플레이어 오버레이 */
+.fullscreen-player-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1500;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  color: var(--text-primary);
+  animation: slideUpFade 0.45s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes slideUpFade {
+  from {
+    transform: translateY(100%);
+    opacity: 0.5;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.fullscreen-player-overlay.closing {
+  animation: slideDownFade 0.4s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes slideDownFade {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0.5;
+  }
+}
+
+/* 몽환적인 동격 앰비언트 블러 배경 */
+.fs-bg-ambient {
+  position: absolute;
+  top: -10%;
+  left: -10%;
+  width: 120%;
+  height: 120%;
+  background-size: cover;
+  background-position: center;
+  filter: blur(60px) brightness(0.4) saturate(140%);
+  transform: scale(1.1);
+  z-index: 1;
+  transition: background-image 0.5s ease-in-out;
+}
+
+/* 어두운 베일 그라디언트 오버레이 */
+.fs-bg-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(180deg, rgba(7, 7, 15, 0.4) 0%, rgba(7, 7, 15, 0.7) 40%, rgba(7, 7, 15, 0.95) 100%);
+  z-index: 2;
+}
+
+/* 내부 컨테이너 (700px 최고 가로폭 고정 및 모바일 대응) */
+.fs-container {
+  position: relative;
+  width: 100%;
+  max-width: 600px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 32px 24px var(--safe-area-inset-bottom, 24px) 24px;
+  z-index: 10;
+}
+
+/* 1. 헤더 영역 */
+.fs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 48px;
+  margin-bottom: 16px;
+}
+
+.fs-close-btn, .fs-option-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+}
+
+.fs-close-btn:hover, .fs-option-btn:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.fs-header-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.fs-header-title span {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+}
+
+/* 2. 메인 콘텐츠 영역 (커버/가사 탭) */
+.fs-content {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  margin: 16px 0;
+  min-height: 0; /* flex 자식의 스크롤 한계 지정을 위해 필수 */
+}
+
+/* 앨범 커버 뷰 */
+.fs-cover-view {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.fs-cover-wrap {
+  width: 280px;
+  height: 280px;
+  max-width: 75vw;
+  max-height: 75vw;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 30px rgba(157, 78, 221, 0.25);
+  margin-bottom: 40px;
+  position: relative;
+  transition: transform 0.5s ease-out;
+}
+
+.fs-cover-wrap:hover {
+  transform: scale(1.03);
+}
+
+.fs-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* LP판 회전 효과 (선택 가능, 여기서는 지니 스타일 스퀘어 유지 혹은 은은한 회전) */
+.fs-cover-wrap.spinning {
+  animation: spin 40s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 지니 스타일 2줄 가사 프리뷰 */
+.fs-lyrics-preview {
+  width: 100%;
+  text-align: center;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 20px;
+}
+
+.fs-lyrics-active {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--secondary);
+  text-shadow: 0 0 10px var(--secondary-glow);
+  transition: all 0.3s ease;
+}
+
+.fs-lyrics-next {
+  font-size: 13px;
+  color: var(--text-muted);
+  opacity: 0.8;
+  transition: all 0.3s ease;
+}
+
+.fs-lyrics-placeholder {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* 전체 가사 뷰 */
+.fs-lyrics-view {
+  width: 100%;
+  height: 380px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  padding: 24px 16px;
+  min-height: 0;
+}
+
+.fs-lyrics-header-tabs {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+.fs-tab-btn, .fs-sync-edit-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  padding: 4px 12px;
+  border-radius: 8px;
+}
+
+.fs-tab-btn:hover, .fs-sync-edit-btn:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.fs-lyrics-list {
+  flex-grow: 1;
+  width: 100%;
+  overflow-y: auto;
+  padding: 20px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  mask-image: linear-gradient(to bottom, transparent 0%, white 15%, white 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, white 15%, white 85%, transparent 100%);
+}
+
+.fs-lyrics-list::-webkit-scrollbar {
+  display: none;
+}
+
+.fs-lyric-line {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.45);
+  text-align: center;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  cursor: pointer;
+  width: 90%;
+  line-height: 1.6;
+}
+
+.fs-lyric-line:hover {
+  color: var(--text-primary);
+}
+
+.fs-lyric-line.active {
+  color: var(--secondary);
+  font-size: 18px;
+  font-weight: 700;
+  transform: scale(1.05);
+  text-shadow: 0 0 10px var(--secondary-glow);
+}
+
+.fs-no-lyrics {
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: 100px;
+}
+
+/* 3. 곡 정보 영역 (제목 + 좋아요) */
+.fs-song-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 0 4px;
+}
+
+.fs-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  text-align: left;
+}
+
+.fs-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fs-artist {
+  font-size: 14px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fs-like-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+}
+
+.fs-like-btn:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.fs-like-btn.liked {
+  color: #ff4d6d;
+  filter: drop-shadow(0 0 8px rgba(255, 77, 109, 0.5));
+}
+
+/* 4. 프로그레스 바 영역 */
+.fs-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.fs-progress-time {
+  width: 36px;
+  text-align: center;
+}
+
+.fs-progress-track-bg {
+  flex-grow: 1;
+  height: 4px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  position: relative;
+  cursor: pointer;
+  transition: height 0.15s ease;
+}
+
+.fs-progress-track-bg:hover {
+  height: 6px;
+}
+
+.fs-progress-track-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--secondary) 0%, var(--primary) 100%);
+  border-radius: 2px;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.fs-progress-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: var(--text-primary);
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: opacity 0.1s;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
+}
+
+.fs-progress-track-bg:hover .fs-progress-thumb {
+  opacity: 1;
+}
+
+/* 5. 핵심 재생 컨트롤 영역 */
+.fs-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 16px;
+  margin-bottom: 32px;
+}
+
+.fs-control-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+  padding: 8px;
+  border-radius: 50%;
+}
+
+.fs-control-btn:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.fs-control-btn.active {
+  color: var(--secondary);
+  filter: drop-shadow(0 0 6px var(--secondary-glow));
+}
+
+.fs-play-pause-btn {
+  background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%);
+  color: var(--text-primary);
+  border: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: 0 8px 24px rgba(157, 78, 221, 0.45);
+}
+
+.fs-play-pause-btn:hover {
+  transform: scale(1.06);
+  box-shadow: 0 10px 28px rgba(157, 78, 221, 0.6);
+}
+
+/* 6. 하단 유틸리티 바 (재생목록, 가사 탭, 볼륨) */
+.fs-bottom-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 20px;
+}
+
+.fs-bottom-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: var(--transition);
+  font-size: 10px;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 8px;
+}
+
+.fs-bottom-btn:hover {
+  color: var(--text-primary);
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.fs-bottom-btn.active {
+  color: var(--secondary);
+}
+
+.fs-volume-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 120px;
+}
+
+.fs-volume-icon {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.fs-volume-icon:hover {
+  color: var(--text-primary);
+}
+
+.fs-volume-track {
+  flex-grow: 1;
+  height: 4px;
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  position: relative;
+  cursor: pointer;
+}
+
+.fs-volume-fill {
+  height: 100%;
+  background-color: var(--text-primary);
+  border-radius: 2px;
+}
+
+/* 재생 목록 슬라이드 업 드로어 */
+.fs-queue-drawer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 440px;
+  background-color: rgba(15, 15, 25, 0.96);
+  backdrop-filter: blur(30px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px 24px 0 0;
+  box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.6);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 20px;
+  animation: slideUpDrawer 0.35s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes slideUpDrawer {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.fs-queue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.fs-queue-header h4 {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.fs-queue-close {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  padding: 4px;
+}
+
+.fs-queue-close:hover {
+  color: var(--text-primary);
+}
+
+.fs-queue-list {
+  flex-grow: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fs-queue-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: var(--transition);
+  background-color: rgba(255, 255, 255, 0.01);
+}
+
+.fs-queue-item:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.fs-queue-item.active {
+  background-color: rgba(157, 78, 221, 0.08);
+  border: 1px solid rgba(157, 78, 221, 0.2);
+}
+
+.fs-qi-index {
+  font-size: 12px;
+  color: var(--text-muted);
+  width: 24px;
+  text-align: center;
+}
+
+.fs-qi-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+  margin-right: 12px;
+}
+
+.fs-qi-details {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  text-align: left;
+}
+
+.fs-qi-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fs-qi-artist {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fs-qi-item.active .fs-qi-title {
+  color: var(--secondary);
+}
+
+/* 재생중 웨이브 애니메이션 */
+.fs-playing-wave {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 12px;
+  margin-left: 8px;
+}
+
+.fs-playing-wave span {
+  width: 2px;
+  background-color: var(--secondary);
+  animation: waveBounce 1.2s ease-in-out infinite;
+}
+
+.fs-playing-wave span:nth-child(1) { height: 60%; animation-delay: 0.2s; }
+.fs-playing-wave span:nth-child(2) { height: 100%; animation-delay: 0.4s; }
+.fs-playing-wave span:nth-child(3) { height: 40%; animation-delay: 0.6s; }
+
+@keyframes waveBounce {
+  0%, 100% { transform: scaleY(0.4); }
+  50% { transform: scaleY(1); }
+}
+
+/* 기존 하단 플레이어 정보영역 마우스 커서 스타일 */
+.player-song-info {
+  cursor: pointer;
+}
+.player-song-info:hover .player-img {
+  transform: scale(1.04);
+  box-shadow: 0 4px 12px var(--primary-glow);
+}
+.player-img {
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}

@@ -24,7 +24,8 @@ import {
   Edit2,
   Trophy,
   Clock,
-  Menu
+  Menu,
+  ChevronDown
 } from 'lucide-react';
 import { PoemAnimation } from './components/ui/3d-animation';
 import './App.css';
@@ -95,6 +96,12 @@ function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState('');
   
+  // Fullscreen Modal Player States
+  const [isFullscreenPlayerOpen, setIsFullscreenPlayerOpen] = useState(false);
+  const [fullscreenTab, setFullscreenTab] = useState('cover'); // 'cover' or 'lyrics'
+  const [isPlaylistDrawerOpen, setIsPlaylistDrawerOpen] = useState(false);
+  const [isFullscreenClosing, setIsFullscreenClosing] = useState(false);
+  
   // Playlist Modal State
   const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
@@ -140,6 +147,34 @@ function App() {
   const audioRef = useRef(new Audio());
   const lyricsBodyRef = useRef(null);
   const sleepPopoverRef = useRef(null);
+  const mobileLyricsListRef = useRef(null);
+
+  // Fullscreen player helpers
+  const openFullscreenPlayer = () => {
+    if (activeSong) {
+      setIsFullscreenPlayerOpen(true);
+      setIsFullscreenClosing(false);
+    }
+  };
+
+  const closeFullscreenPlayer = () => {
+    setIsFullscreenClosing(true);
+    setTimeout(() => {
+      setIsFullscreenPlayerOpen(false);
+      setIsFullscreenClosing(false);
+      setIsPlaylistDrawerOpen(false);
+    }, 400);
+  };
+
+  // Fullscreen lyrics auto scroll effect
+  useEffect(() => {
+    if (isFullscreenPlayerOpen && fullscreenTab === 'lyrics' && mobileLyricsListRef.current) {
+      const activeEl = mobileLyricsListRef.current.querySelector('.active');
+      if (activeEl) {
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [currentLyricIndex, isFullscreenPlayerOpen, fullscreenTab]);
 
   // 외부 클릭 시 자동 종료 타이머 팝오버 닫기
   useEffect(() => {
@@ -2012,7 +2047,7 @@ function App() {
       <footer className="bottom-player">
         
         {/* Left Section: Playing Track Info */}
-        <div className="player-song-info">
+        <div className="player-song-info" onClick={openFullscreenPlayer}>
           {activeSong ? (
             <>
               <img className="player-img" src={activeSong.cover_url} alt={activeSong.title} />
@@ -2480,6 +2515,228 @@ function App() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* 5. 프리미엄 지니 스타일 전체 화면 플레이어 모달 오버레이 */}
+      {isFullscreenPlayerOpen && activeSong && (
+        <div className={`fullscreen-player-overlay ${isFullscreenClosing ? 'closing' : ''}`}>
+          {/* 동적 앰비언트 블러 배경 */}
+          <div 
+            className="fs-bg-ambient" 
+            style={{ backgroundImage: `url(${activeSong.cover_url})` }}
+          ></div>
+          <div className="fs-bg-overlay"></div>
+
+          <div className="fs-container">
+            {/* A. 헤더 영역 */}
+            <header className="fs-header">
+              <button className="fs-close-btn" onClick={closeFullscreenPlayer} title="플레이어 닫기">
+                <ChevronDown size={28} />
+              </button>
+              <div className="fs-header-title">
+                <span>Now Playing</span>
+              </div>
+              <button 
+                className="fs-option-btn" 
+                onClick={() => setIsPlaylistDrawerOpen(!isPlaylistDrawerOpen)}
+                title="재생목록 열기"
+              >
+                <ListMusic size={24} />
+              </button>
+            </header>
+
+            {/* B. 메인 콘텐츠 영역 (커버 뷰 / 가사 뷰) */}
+            <div className="fs-content">
+              {fullscreenTab === 'cover' ? (
+                <div className="fs-cover-view" onClick={() => setFullscreenTab('lyrics')}>
+                  <div className={`fs-cover-wrap ${isPlaying ? 'spinning' : ''}`}>
+                    <img className="fs-cover-img" src={activeSong.cover_url} alt={activeSong.title} />
+                  </div>
+                  {/* 지니 스타일 2줄 실시간 가사 */}
+                  <div className="fs-lyrics-preview">
+                    {parsedLyrics[currentLyricIndex] ? (
+                      <>
+                        <p className="fs-lyrics-active">{parsedLyrics[currentLyricIndex].text}</p>
+                        <p className="fs-lyrics-next">
+                          {parsedLyrics[currentLyricIndex + 1] ? parsedLyrics[currentLyricIndex + 1].text : ''}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="fs-lyrics-placeholder">가사 데이터가 없습니다.</p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="fs-lyrics-view">
+                  <div className="fs-lyrics-header-tabs">
+                    <button className="fs-tab-btn" onClick={() => setFullscreenTab('cover')}>
+                      앨범 커버 보기
+                    </button>
+                    {isAdminAuthenticated && !isSyncEditing && (
+                      <button 
+                        className="fs-sync-edit-btn"
+                        onClick={() => {
+                          closeFullscreenPlayer();
+                          setIsLyricsOpen(true);
+                          startSyncEditing();
+                        }}
+                      >
+                        ⏱️ 실시간 가사 싱크 편집
+                      </button>
+                    )}
+                  </div>
+                  <div className="fs-lyrics-list" ref={mobileLyricsListRef}>
+                    {parsedLyrics.length > 0 ? (
+                      parsedLyrics.map((line, idx) => (
+                        <div 
+                          key={idx}
+                          className={`fs-lyric-line ${idx === currentLyricIndex ? 'active' : ''}`}
+                          onClick={() => {
+                            if (line.time !== null) {
+                              audioRef.current.currentTime = line.time;
+                              setCurrentTime(line.time);
+                            }
+                          }}
+                        >
+                          {line.text}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="fs-no-lyrics">등록된 가사가 없습니다.</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* C. 하단 컨트롤 세션 */}
+            <div className="fs-control-session">
+              {/* 곡명 및 아티스트, 좋아요 */}
+              <div className="fs-song-info">
+                <div className="fs-details">
+                  <h1 className="fs-title">{activeSong.title}</h1>
+                  <p className="fs-artist">{activeSong.artist}</p>
+                </div>
+                <button 
+                  className={`fs-like-btn ${likedSongIds.includes(activeSong.id) ? 'liked' : ''}`}
+                  onClick={(e) => toggleLike(e, activeSong.id)}
+                >
+                  <Heart size={24} fill={likedSongIds.includes(activeSong.id) ? "currentColor" : "none"} />
+                </button>
+              </div>
+
+              {/* 진행 슬라이더 */}
+              <div className="fs-progress-row">
+                <span className="fs-progress-time">{formatTime(currentTime)}</span>
+                <div className="fs-progress-track-bg" onClick={handleSeek}>
+                  <div 
+                    className="fs-progress-track-fill" 
+                    style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+                  ></div>
+                  <div 
+                    className="fs-progress-thumb"
+                    style={{ left: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+                  ></div>
+                </div>
+                <span className="fs-progress-time">{formatTime(duration)}</span>
+              </div>
+
+              {/* 재생/일시정지, 이전/다음 곡, 루프, 셔플 */}
+              <div className="fs-controls">
+                <button 
+                  className={`fs-control-btn ${isShuffled ? 'active' : ''}`}
+                  onClick={() => setIsShuffled(!isShuffled)}
+                  title="셔플 재생"
+                >
+                  <Shuffle size={20} />
+                </button>
+                <button className="fs-control-btn" onClick={handlePrevSong} title="이전 곡 재생">
+                  <SkipBack size={26} />
+                </button>
+                <button className="fs-play-pause-btn" onClick={handlePlayPause} title={isPlaying ? '일시정지' : '재생'}>
+                  {isPlaying ? <Pause size={28} fill="currentColor" /> : <Play size={28} fill="currentColor" style={{ marginLeft: '4px' }} />}
+                </button>
+                <button className="fs-control-btn" onClick={handleNextSong} title="다음 곡 재생">
+                  <SkipForward size={26} />
+                </button>
+                <button 
+                  className={`fs-control-btn ${isLooping ? 'active' : ''}`}
+                  onClick={() => setIsLooping(!isLooping)}
+                  title="반복 재생"
+                >
+                  <Repeat size={20} />
+                </button>
+              </div>
+
+              {/* 하단 서브바 (재생목록 토글, 가사 토글, 볼륨 조절) */}
+              <div className="fs-bottom-bar">
+                <button 
+                  className={`fs-bottom-btn ${isPlaylistDrawerOpen ? 'active' : ''}`}
+                  onClick={() => setIsPlaylistDrawerOpen(!isPlaylistDrawerOpen)}
+                >
+                  <ListMusic size={22} />
+                  <span>재생대기열</span>
+                </button>
+                <button 
+                  className={`fs-bottom-btn ${fullscreenTab === 'lyrics' ? 'active' : ''}`}
+                  onClick={() => setFullscreenTab(fullscreenTab === 'lyrics' ? 'cover' : 'lyrics')}
+                >
+                  <BookOpen size={22} />
+                  <span>전체 가사</span>
+                </button>
+                <div className="fs-volume-control">
+                  <button className="fs-volume-icon" onClick={() => setIsMuted(!isMuted)}>
+                    {isMuted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                  </button>
+                  <div className="fs-volume-track" onClick={handleVolumeSeek}>
+                    <div 
+                      className="fs-volume-fill" 
+                      style={{ width: `${isMuted ? 0 : volume * 100}%` }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* D. 내부 슬라이드 업 재생 대기열 드로어 */}
+          {isPlaylistDrawerOpen && (
+            <div className="fs-queue-drawer">
+              <div className="fs-queue-header">
+                <h4>현재 재생 대기열 ({queue.length}곡)</h4>
+                <button className="fs-queue-close" onClick={() => setIsPlaylistDrawerOpen(false)}>
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="fs-queue-list">
+                {queue.map((song, idx) => (
+                  <div 
+                    key={`${song.id}-${idx}`}
+                    className={`fs-queue-item ${song.id === activeSong.id ? 'active' : ''}`}
+                    onClick={() => {
+                      setQueueIndex(idx);
+                      setActiveSong(song);
+                      setIsPlaying(true);
+                      incrementPlayCount(song.id);
+                    }}
+                  >
+                    <span className="fs-qi-index">{idx + 1}</span>
+                    <img className="fs-qi-img" src={song.cover_url} alt={song.title} />
+                    <div className="fs-qi-details">
+                      <div className="fs-qi-title">{song.title}</div>
+                      <div className="fs-qi-artist">{song.artist}</div>
+                    </div>
+                    {song.id === activeSong.id && isPlaying && (
+                      <div className="fs-playing-wave">
+                        <span></span><span></span><span></span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
