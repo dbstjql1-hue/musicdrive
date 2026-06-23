@@ -1891,29 +1891,29 @@ body {
   }
 }
 
-/* 몽환적인 동격 앰비언트 블러 배경 */
+/* 몽환적인 동적 앰비언트 배경 (앨범 커버가 은은히 보이도록 블러를 낮춤) */
 .fs-bg-ambient {
   position: absolute;
-  top: -10%;
-  left: -10%;
-  width: 120%;
-  height: 120%;
+  top: -5%;
+  left: -5%;
+  width: 110%;
+  height: 110%;
   background-size: cover;
   background-position: center;
-  filter: blur(60px) brightness(0.4) saturate(140%);
-  transform: scale(1.1);
+  filter: blur(18px) brightness(0.35) saturate(110%);
+  transform: scale(1.05);
   z-index: 1;
   transition: background-image 0.5s ease-in-out;
 }
 
-/* 어두운 베일 그라디언트 오버레이 */
+/* 어두운 비네트 그라디언트 오버레이 (텍스트 가독성을 위한 강한 엣지 쉐도우) */
 .fs-bg-overlay {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(180deg, rgba(7, 7, 15, 0.4) 0%, rgba(7, 7, 15, 0.7) 40%, rgba(7, 7, 15, 0.95) 100%);
+  background: radial-gradient(circle at center, rgba(7, 7, 15, 0.3) 0%, rgba(7, 7, 15, 0.7) 50%, rgba(5, 5, 10, 0.95) 100%);
   z-index: 2;
 }
 
@@ -2040,14 +2040,15 @@ body {
   font-size: 15px;
   font-weight: 600;
   color: var(--secondary);
-  text-shadow: 0 0 10px var(--secondary-glow);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.95), 0 0 15px var(--secondary-glow);
   transition: all 0.3s ease;
 }
 
 .fs-lyrics-next {
   font-size: 13px;
   color: var(--text-muted);
-  opacity: 0.8;
+  opacity: 0.85;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.9);
   transition: all 0.3s ease;
 }
 
@@ -2055,6 +2056,7 @@ body {
   font-size: 14px;
   color: var(--text-muted);
   font-style: italic;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
 }
 
 /* 전체 가사 뷰 */
@@ -2064,9 +2066,10 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  background-color: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(10px);
+  background-color: rgba(0, 0, 0, 0.55); /* 가사 가독성을 위해 어둡게 처리 */
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
   border-radius: 20px;
   padding: 24px 16px;
   min-height: 0;
@@ -2117,7 +2120,8 @@ body {
 
 .fs-lyric-line {
   font-size: 15px;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 0.55); /* 가독성을 위해 대비 향상 */
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
   text-align: center;
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   cursor: pointer;
@@ -2134,7 +2138,7 @@ body {
   font-size: 18px;
   font-weight: 700;
   transform: scale(1.05);
-  text-shadow: 0 0 10px var(--secondary-glow);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.95), 0 0 15px var(--secondary-glow);
 }
 
 .fs-no-lyrics {
@@ -2164,6 +2168,7 @@ body {
   font-size: 20px;
   font-weight: 700;
   color: var(--text-primary);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2172,6 +2177,7 @@ body {
 .fs-artist {
   font-size: 14px;
   color: var(--text-secondary);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
