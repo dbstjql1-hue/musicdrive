@@ -2564,7 +2564,7 @@ function App() {
             <div className="fs-content">
               {fullscreenTab === 'cover' ? (
                 <div className="fs-cover-view" onClick={() => setFullscreenTab('lyrics')}>
-                  <div className={`fs-cover-wrap ${isPlaying ? 'spinning' : ''}`}>
+                  <div className="fs-cover-wrap">
                     <img className="fs-cover-img" src={activeSong.cover_url} alt={activeSong.title} />
                   </div>
                   {/* 지니 스타일 2줄 실시간 가사 */}
