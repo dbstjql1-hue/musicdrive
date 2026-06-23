@@ -92,6 +92,8 @@ function App() {
   const [audioFile, setAudioFile] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState('');
   
   // Playlist Modal State
   const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
@@ -409,6 +411,42 @@ function App() {
     } catch (err) {
       console.error(err);
       showToast('서버 연결에 실패했습니다.');
+    }
+  };
+
+  const handleLocalSync = async () => {
+    if (!window.confirm('수파베이스에서 로컬로 파일을 이전하고 깃허브에 배포하시겠습니까? (이 작업은 완료되는 데 몇 분 정도 소요될 수 있습니다.)')) {
+      return;
+    }
+    
+    setIsSyncing(true);
+    setSyncStatus('동기화 진행 중...');
+    
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ adminPassword })
+      });
+      
+      const data = await res.json();
+      if (res.ok) {
+        setSyncStatus('동기화 및 깃 푸시 성공!');
+        showToast('성공적으로 로컬 동기화 및 깃 푸시를 완료했습니다!');
+        // 음원 목록을 새로고침하여 바뀐 URL을 반영합니다.
+        fetchSongs(searchQuery, selectedCategory);
+      } else {
+        setSyncStatus('동기화 실패: ' + (data.error || '알 수 없는 오류'));
+        showToast(data.error || '동기화 중 오류가 발생했습니다.');
+      }
+    } catch (err) {
+      console.error(err);
+      setSyncStatus('서버 연결 오류');
+      showToast('서버 연결 오류로 동기화에 실패했습니다.');
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -1937,6 +1975,29 @@ function App() {
                         </button>
                       </div>
                     </form>
+                  </div>
+
+                  <div className="admin-card" style={{ marginTop: '24px' }}>
+                    <h2 style={{ marginBottom: '16px', textAlign: 'left' }}>수파베이스 로컬 동기화</h2>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '20px', lineHeight: '1.6' }}>
+                      수파베이스 스토리지에 임시 저장된 음원 및 이미지 파일을 로컬 폴더(frontend/public)로 다운로드하고 데이터베이스 주소를 상대 경로로 업데이트한 뒤, 자동으로 깃허브에 배포(push)합니다.<br />
+                      <strong>* 이 작업은 로컬에서 백엔드 서버가 구동 중일 때 정상적으로 백커밋 및 푸시가 완료됩니다.</strong>
+                    </p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <button 
+                        type="button" 
+                        className="btn-primary-glow"
+                        onClick={handleLocalSync}
+                        disabled={isSyncing}
+                      >
+                        {isSyncing ? '동기화 및 깃 푸시 중...' : '스토리지 로컬 동기화 실행'}
+                      </button>
+                      {syncStatus && (
+                        <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                          {syncStatus}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

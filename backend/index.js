@@ -868,6 +868,58 @@ app.get('/api/diagnose', async (req, res) => {
   }
 });
 
+// 12. 수파베이스 로컬 동기화 및 깃 푸시 API (POST /api/admin/sync)
+app.post('/api/admin/sync', async (req, res) => {
+  try {
+    const { adminPassword } = req.body;
+    const expectedPassword = process.env.ADMIN_PASSWORD || 'admin1234';
+
+    if (adminPassword !== expectedPassword) {
+      return res.status(403).json({ error: '관리자 인증 비밀번호가 일치하지 않습니다.' });
+    }
+
+    const { exec } = require('child_process');
+    const path = require('path');
+    const rootDir = path.join(__dirname, '..');
+
+    const runCmd = (cmd) => {
+      return new Promise((resolve, reject) => {
+        exec(cmd, { cwd: rootDir }, (error, stdout, stderr) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve(stdout);
+          }
+        });
+      });
+    };
+
+    console.log('[SYNC] Starting sync script execution via web dashboard...');
+    // A. sync_assets.js 스크립트 실행
+    await runCmd('node backend/sync_assets.js');
+    console.log('[SYNC] Sync assets script completed.');
+
+    // B. git status 확인하여 커밋할 항목이 있는지 체크
+    const statusOutput = await runCmd('git status --porcelain');
+    if (statusOutput.trim() === '') {
+      console.log('[SYNC] No changes to commit.');
+      return res.json({ success: true, message: '동기화 완료 (추가로 커밋할 파일 없음)' });
+    }
+
+    // C. 깃허브 스테이징, 커밋 및 푸시
+    console.log('[SYNC] Changes detected. Committing and pushing to git...');
+    await runCmd('git add .');
+    await runCmd(`git commit -m "sync: 수파베이스 음원 로컬 동기화 (Admin Web Dashboard)"`);
+    await runCmd('git push origin main');
+    console.log('[SYNC] Push to git completed successfully.');
+
+    res.json({ success: true, message: '동기화 및 깃허브 배포가 성공적으로 완료되었습니다.' });
+  } catch (err) {
+    console.error('동기화 처리 API 오류:', err.message || err);
+    res.status(500).json({ error: `동기화 실패: ${err.message || err}` });
+  }
+});
+
 // 기본 상태 검사 엔드포인트
 app.get('/', (req, res) => {
   res.json({ message: 'musicdrive Backend API Server is running!' });
