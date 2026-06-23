@@ -1876,7 +1876,8 @@ function App() {
                     </form>
                   </div>
                 ) : (
-                  <div className="admin-card">
+                  <>
+                    <div className="admin-card">
                     <h2 style={{ marginBottom: '24px', textAlign: 'left' }}>음원 신규 등록</h2>
                     <form onSubmit={handleUploadSubmit}>
                       <div className="form-group">
@@ -1999,7 +2000,8 @@ function App() {
                       )}
                     </div>
                   </div>
-                )}
+                </>
+              )}
               </div>
             )}
           </>
