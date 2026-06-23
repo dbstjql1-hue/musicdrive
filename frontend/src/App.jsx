@@ -1014,10 +1014,10 @@ function App() {
       return;
     }
 
-    // 파일 용량 체크 (15MB 제한) - Cloudtype 메모리 및 대역폭 제한 대비
-    const MAX_FILE_SIZE = 15 * 1024 * 1024;
+    // 파일 용량 체크 (25MB 제한) - Cloudtype 메모리 및 대역폭 제한 대비
+    const MAX_FILE_SIZE = 25 * 1024 * 1024;
     if (audioFile.size > MAX_FILE_SIZE) {
-      showToast('음원 파일 용량이 너무 큽니다 (15MB 초과). 원활한 스트리밍을 위해 용량을 줄여주세요.');
+      showToast('음원 파일 용량이 너무 큽니다 (25MB 초과). 원활한 스트리밍을 위해 용량을 줄여주세요.');
       return;
     }
 
