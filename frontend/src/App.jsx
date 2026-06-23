@@ -2047,7 +2047,15 @@ function App() {
       </main>
 
       {/* Floating Bottom Music Player */}
-      <footer className="bottom-player">
+      <footer 
+        className="bottom-player"
+        style={{
+          backgroundImage: activeSong ? `linear-gradient(rgba(10, 10, 15, 0.85), rgba(10, 10, 15, 0.85)), url(${activeSong.cover_url})` : 'none',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat'
+        }}
+      >
         
         {/* Left Section: Playing Track Info */}
         <div className="player-song-info" onClick={openFullscreenPlayer}>
