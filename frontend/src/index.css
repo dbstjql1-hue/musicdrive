@@ -2534,3 +2534,14 @@ body {
 .player-img {
   transition: transform 0.25s ease, box-shadow 0.25s ease;
 }
+
+/* 확장 버튼 스타일 */
+.expand-btn {
+  margin-left: 12px;
+  transition: var(--transition);
+}
+.expand-btn:hover {
+  color: var(--secondary) !important;
+  transform: scale(1.2);
+  filter: drop-shadow(0 0 6px var(--secondary-glow));
+}

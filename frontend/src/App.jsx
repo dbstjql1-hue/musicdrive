@@ -25,7 +25,8 @@ import {
   Trophy,
   Clock,
   Menu,
-  ChevronDown
+  ChevronDown,
+  Maximize2
 } from 'lucide-react';
 import { PoemAnimation } from './components/ui/3d-animation';
 import './App.css';
@@ -2060,6 +2061,17 @@ function App() {
                 onClick={(e) => toggleLike(e, activeSong.id)}
               >
                 <Heart size={16} fill={likedSongIds.includes(activeSong.id) ? "currentColor" : "none"} />
+              </button>
+              <button 
+                className="icon-btn expand-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openFullscreenPlayer();
+                }}
+                title="플레이어 크게 보기"
+                style={{ marginLeft: '12px' }}
+              >
+                <Maximize2 size={16} />
               </button>
             </>
           ) : (
