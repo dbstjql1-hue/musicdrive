@@ -920,6 +920,179 @@ app.post('/api/admin/sync', async (req, res) => {
   }
 });
 
+// ==========================================
+// 자유게시판(Board) API 엔드포인트
+// ==========================================
+
+// 1. 게시글 목록 조회
+app.get('/api/board', async (req, res) => {
+  try {
+    const { data: posts, error } = await supabase
+      .from('board_posts')
+      .select('id, title, author, views, created_at')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json(posts || []);
+  } catch (err) {
+    console.error('게시글 목록 조회 오류:', err);
+    res.status(500).json({ error: '게시글 목록을 가져올 수 없습니다.' });
+  }
+});
+
+// 2. 게시글 상세 조회 (조회수 증가 포함)
+app.get('/api/board/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const { data: post, error: getErr } = await supabase
+      .from('board_posts')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (getErr || !post) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
+
+    // 조회수 + 1 업데이트 로직
+    await supabase.from('board_posts').update({ views: post.views + 1 }).eq('id', id);
+    post.views += 1;
+
+    res.json(post);
+  } catch (err) {
+    console.error('게시글 상세 조회 오류:', err);
+    res.status(500).json({ error: '게시글을 불러올 수 없습니다.' });
+  }
+});
+
+// 3. 게시글 작성
+app.post('/api/board', async (req, res) => {
+  try {
+    const { title, content, author, password } = req.body;
+    if (!title || !content || !author || !password) {
+      return res.status(400).json({ error: '필수 정보를 모두 입력해주세요.' });
+    }
+
+    const { data: newPost, error } = await supabase
+      .from('board_posts')
+      .insert([{ title, content, author, password }])
+      .select('id, title, author, created_at, views')
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(newPost);
+  } catch (err) {
+    console.error('게시글 작성 오류:', err);
+    res.status(500).json({ error: '게시글을 작성할 수 없습니다.' });
+  }
+});
+
+// 4. 게시글 수정
+app.put('/api/board/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, content, password } = req.body;
+
+    const { data: post, error: getErr } = await supabase.from('board_posts').select('password').eq('id', id).single();
+    if (getErr || !post) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
+
+    if (post.password !== password) return res.status(403).json({ error: '비밀번호가 일치하지 않습니다.' });
+
+    const { data: updated, error: updateErr } = await supabase
+      .from('board_posts')
+      .update({ title, content })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateErr) throw updateErr;
+    res.json(updated);
+  } catch (err) {
+    console.error('게시글 수정 오류:', err);
+    res.status(500).json({ error: '게시글을 수정할 수 없습니다.' });
+  }
+});
+
+// 5. 게시글 삭제
+app.delete('/api/board/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const password = req.body.password || req.query.password;
+
+    const { data: post, error: getErr } = await supabase.from('board_posts').select('password').eq('id', id).single();
+    if (getErr || !post) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
+
+    if (post.password !== password) return res.status(403).json({ error: '비밀번호가 일치하지 않습니다.' });
+
+    const { error: deleteErr } = await supabase.from('board_posts').delete().eq('id', id);
+    if (deleteErr) throw deleteErr;
+
+    res.json({ success: true, message: '삭제되었습니다.' });
+  } catch (err) {
+    console.error('게시글 삭제 오류:', err);
+    res.status(500).json({ error: '게시글을 삭제할 수 없습니다.' });
+  }
+});
+
+// 6. 댓글 목록 조회
+app.get('/api/board/:id/comments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: comments, error } = await supabase
+      .from('board_comments')
+      .select('id, post_id, author, content, created_at')
+      .eq('post_id', id)
+      .order('created_at', { ascending: true });
+    
+    if (error) throw error;
+    res.json(comments || []);
+  } catch (err) {
+    console.error('댓글 목록 조회 오류:', err);
+    res.status(500).json({ error: '댓글을 가져올 수 없습니다.' });
+  }
+});
+
+// 7. 댓글 작성
+app.post('/api/board/:id/comments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { author, content, password } = req.body;
+    
+    if (!author || !content || !password) return res.status(400).json({ error: '필수 정보를 모두 입력해주세요.' });
+
+    const { data: comment, error } = await supabase
+      .from('board_comments')
+      .insert([{ post_id: id, author, content, password }])
+      .select('id, post_id, author, content, created_at')
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(comment);
+  } catch (err) {
+    console.error('댓글 작성 오류:', err);
+    res.status(500).json({ error: '댓글을 작성할 수 없습니다.' });
+  }
+});
+
+// 8. 댓글 삭제
+app.delete('/api/board/comments/:commentId', async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const password = req.body.password || req.query.password;
+
+    const { data: comment, error: getErr } = await supabase.from('board_comments').select('password').eq('id', commentId).single();
+    if (getErr || !comment) return res.status(404).json({ error: '댓글을 찾을 수 없습니다.' });
+
+    if (comment.password !== password) return res.status(403).json({ error: '비밀번호가 일치하지 않습니다.' });
+
+    const { error: deleteErr } = await supabase.from('board_comments').delete().eq('id', commentId);
+    if (deleteErr) throw deleteErr;
+
+    res.json({ success: true, message: '댓글이 삭제되었습니다.' });
+  } catch (err) {
+    console.error('댓글 삭제 오류:', err);
+    res.status(500).json({ error: '댓글을 삭제할 수 없습니다.' });
+  }
+});
+
 // 기본 상태 검사 엔드포인트
 app.get('/', (req, res) => {
   res.json({ message: 'musicdrive Backend API Server is running!' });

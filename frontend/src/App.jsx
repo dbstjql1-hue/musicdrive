@@ -26,7 +26,11 @@ import {
   Clock,
   Menu,
   ChevronDown,
-  Maximize2
+  Maximize2,
+  MessageSquare,
+  MessageCircle,
+  Eye,
+  User
 } from 'lucide-react';
 import { PoemAnimation } from './components/ui/3d-animation';
 import './App.css';
@@ -94,8 +98,6 @@ function App() {
   const [audioFile, setAudioFile] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncStatus, setSyncStatus] = useState('');
   
   // Fullscreen Modal Player States
   const [isFullscreenPlayerOpen, setIsFullscreenPlayerOpen] = useState(false);
@@ -140,6 +142,19 @@ function App() {
   const [vsEditSongAId, setVsEditSongAId] = useState('');
   const [vsEditSongBId, setVsEditSongBId] = useState('');
   const [isUpdatingVS, setIsUpdatingVS] = useState(false);
+
+  // Board states
+  const [boardPosts, setBoardPosts] = useState([]);
+  const [boardView, setBoardView] = useState('list'); // list, write, read, edit
+  const [activePost, setActivePost] = useState(null);
+  const [boardComments, setBoardComments] = useState([]);
+  const [boardTitle, setBoardTitle] = useState('');
+  const [boardAuthor, setBoardAuthor] = useState('');
+  const [boardPassword, setBoardPassword] = useState('');
+  const [boardContent, setBoardContent] = useState('');
+  const [commentAuthor, setCommentAuthor] = useState('');
+  const [commentPassword, setCommentPassword] = useState('');
+  const [commentContent, setCommentContent] = useState('');
   
   // Toast UI
   const [toastMessage, setToastMessage] = useState('');
@@ -512,7 +527,20 @@ function App() {
     fetchPlaylists();
     fetchLikedSongs();
     fetchVSMatches();
+    fetchBoardPosts();
   }, []);
+
+  async function fetchBoardPosts() {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/board`);
+      if (res.ok) {
+        const data = await res.json();
+        setBoardPosts(data);
+      }
+    } catch (err) {
+      console.error('게시글 가져오기 오류:', err);
+    }
+  }
 
   async function fetchVSMatches() {
     try {
@@ -684,7 +712,161 @@ function App() {
     } catch (err) {
       console.error('음원 가져오기 오류:', err);
     }
+  }
+
+  // --- Board Handlers ---
+  const handleBoardSubmit = async (e) => {
+    e.preventDefault();
+    if (!boardTitle || !boardContent || !boardAuthor || !boardPassword) {
+      showToast('모든 항목을 입력해주세요.');
+      return;
+    }
+    try {
+      let url = `${API_BASE_URL}/api/board`;
+      let method = 'POST';
+      if (boardView === 'edit' && activePost) {
+        url = `${API_BASE_URL}/api/board/${activePost.id}`;
+        method = 'PUT';
+      }
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: boardTitle,
+          content: boardContent,
+          author: boardAuthor,
+          password: boardPassword
+        })
+      });
+
+      if (res.ok) {
+        showToast(boardView === 'edit' ? '게시글이 수정되었습니다.' : '게시글이 작성되었습니다.');
+        setBoardView('list');
+        fetchBoardPosts();
+      } else {
+        const data = await res.json();
+        showToast(data.error || '처리 중 오류가 발생했습니다.');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('서버 연결 오류');
+    }
   };
+
+  const handleReadPost = async (post) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/board/${post.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setActivePost(data);
+        setBoardView('read');
+        fetchBoardComments(post.id);
+        fetchBoardPosts(); // 조회수 업데이트를 위해 목록 리프레시
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('게시글을 불러올 수 없습니다.');
+    }
+  };
+
+  const handleDeletePost = async (id) => {
+    const pwd = window.prompt("게시글 비밀번호를 입력하세요:");
+    if (!pwd) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/board/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwd })
+      });
+      if (res.ok) {
+        showToast('게시글이 삭제되었습니다.');
+        setBoardView('list');
+        fetchBoardPosts();
+      } else {
+        const data = await res.json();
+        showToast(data.error || '비밀번호가 일치하지 않습니다.');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('서버 연결 오류');
+    }
+  };
+
+  const handleEditPostClick = () => {
+    setBoardTitle(activePost.title);
+    setBoardContent(activePost.content);
+    setBoardAuthor(activePost.author);
+    setBoardPassword('');
+    setBoardView('edit');
+  };
+
+  async function fetchBoardComments(postId) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/board/${postId}/comments`);
+      if (res.ok) {
+        const data = await res.json();
+        setBoardComments(data);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  const handleCommentSubmit = async (e) => {
+    e.preventDefault();
+    if (!commentAuthor || !commentPassword || !commentContent) {
+      showToast('댓글 항목을 모두 입력해주세요.');
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/board/${activePost.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          author: commentAuthor,
+          password: commentPassword,
+          content: commentContent
+        })
+      });
+      if (res.ok) {
+        showToast('댓글이 작성되었습니다.');
+        setCommentAuthor('');
+        setCommentPassword('');
+        setCommentContent('');
+        fetchBoardComments(activePost.id);
+      } else {
+        const data = await res.json();
+        showToast(data.error || '오류가 발생했습니다.');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('서버 연결 오류');
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    const pwd = window.prompt("댓글 비밀번호를 입력하세요:");
+    if (!pwd) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/board/comments/${commentId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwd })
+      });
+      if (res.ok) {
+        showToast('댓글이 삭제되었습니다.');
+        fetchBoardComments(activePost.id);
+      } else {
+        const data = await res.json();
+        showToast(data.error || '비밀번호가 일치하지 않습니다.');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('서버 연결 오류');
+    }
+  };
+  // -----------------------
 
   async function fetchPlaylists() {
     try {
@@ -1287,6 +1469,15 @@ function App() {
             >
               <Trophy className="icon" />
               <span>곡 대결 투표</span>
+            </div>
+          </li>
+          <li>
+            <div 
+              className={`nav-item ${currentView === 'board' ? 'active' : ''}`}
+              onClick={() => { setCurrentView('board'); setSelectedPlaylist(null); closeMobileMenu(); }}
+            >
+              <MessageSquare className="icon" />
+              <span>자유게시판</span>
             </div>
           </li>
           <li>
@@ -1997,6 +2188,157 @@ function App() {
                   {/* Removed local sync card to prevent confusion on production */}
                 </>
               )}
+              </div>
+            )}
+
+            {/* 자유게시판(Board) 화면 */}
+            {currentView === 'board' && (
+              <div className="board-container">
+                {boardView === 'list' && (
+                  <>
+                    <div className="hero-banner board-hero" style={{ background: 'linear-gradient(135deg, rgba(80, 50, 150, 0.3) 0%, rgba(15, 15, 25, 0.4) 100%)' }}>
+                      <div className="hero-content">
+                        <span className="hero-tag">Community</span>
+                        <h1 className="hero-title">자유게시판</h1>
+                        <p className="hero-desc">자유롭게 음악 이야기나 일상을 나누어 보세요!</p>
+                        <button 
+                          className="play-btn-premium"
+                          onClick={() => {
+                            setBoardTitle('');
+                            setBoardContent('');
+                            setBoardAuthor('');
+                            setBoardPassword('');
+                            setBoardView('write');
+                          }}
+                        >
+                          <Plus size={18} />
+                          글쓰기
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="section-header">
+                      <h2>게시글 목록</h2>
+                    </div>
+                    
+                    <div className="board-list">
+                      <table className="board-table">
+                        <thead>
+                          <tr>
+                            <th>번호</th>
+                            <th>제목</th>
+                            <th>작성자</th>
+                            <th>조회수</th>
+                            <th>작성일</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {boardPosts.map((post, idx) => (
+                            <tr key={post.id} onClick={() => handleReadPost(post)}>
+                              <td className="board-id">{boardPosts.length - idx}</td>
+                              <td className="board-title-cell">{post.title}</td>
+                              <td className="board-author">{post.author}</td>
+                              <td className="board-views">{post.views}</td>
+                              <td className="board-date">{new Date(post.created_at).toLocaleDateString()}</td>
+                            </tr>
+                          ))}
+                          {boardPosts.length === 0 && (
+                            <tr>
+                              <td colSpan="5" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>등록된 게시글이 없습니다.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+
+                {(boardView === 'write' || boardView === 'edit') && (
+                  <div className="board-write admin-card" style={{ maxWidth: '800px', margin: '0 auto' }}>
+                    <h2 style={{ marginBottom: '24px' }}>{boardView === 'edit' ? '게시글 수정' : '게시글 작성'}</h2>
+                    <form onSubmit={handleBoardSubmit}>
+                      <div className="form-group">
+                        <label>제목 *</label>
+                        <input className="form-control" value={boardTitle} onChange={e => setBoardTitle(e.target.value)} required placeholder="제목을 입력하세요" />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                        <div className="form-group">
+                          <label>작성자 (닉네임) *</label>
+                          <input className="form-control" value={boardAuthor} onChange={e => setBoardAuthor(e.target.value)} required placeholder="닉네임" />
+                        </div>
+                        <div className="form-group">
+                          <label>비밀번호 *</label>
+                          <input type="password" className="form-control" value={boardPassword} onChange={e => setBoardPassword(e.target.value)} required placeholder="수정/삭제용 비밀번호" />
+                        </div>
+                      </div>
+                      <div className="form-group">
+                        <label>내용 *</label>
+                        <textarea className="form-control board-textarea" style={{ minHeight: '300px', resize: 'vertical' }} value={boardContent} onChange={e => setBoardContent(e.target.value)} required placeholder="내용을 입력하세요" />
+                      </div>
+                      <div style={{ display: 'flex', gap: '16px', justifyContent: 'flex-end' }}>
+                        <button type="button" className="btn-secondary" onClick={() => setBoardView('list')}>취소</button>
+                        <button type="submit" className="btn-primary-glow">{boardView === 'edit' ? '수정 완료' : '등록하기'}</button>
+                      </div>
+                    </form>
+                  </div>
+                )}
+
+                {boardView === 'read' && activePost && (
+                  <div className="board-read admin-card" style={{ maxWidth: '900px', margin: '0 auto', padding: '40px' }}>
+                    <div className="board-read-header" style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '24px', marginBottom: '32px' }}>
+                      <h2 style={{ fontSize: '28px', marginBottom: '16px' }}>{activePost.title}</h2>
+                      <div className="board-read-meta" style={{ display: 'flex', gap: '20px', color: 'var(--text-secondary)', fontSize: '14px' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><User size={16}/> {activePost.author}</span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Clock size={16}/> {new Date(activePost.created_at).toLocaleString()}</span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Eye size={16}/> 조회수 {activePost.views}</span>
+                      </div>
+                    </div>
+                    <div className="board-read-body" style={{ fontSize: '16px', lineHeight: '1.8', minHeight: '200px', whiteSpace: 'pre-wrap', marginBottom: '40px' }}>
+                      {activePost.content}
+                    </div>
+                    
+                    <div className="board-read-actions" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '40px' }}>
+                      <button className="btn-secondary" onClick={() => { setBoardView('list'); fetchBoardPosts(); }}>목록으로</button>
+                      <div style={{ display: 'flex', gap: '12px' }}>
+                        <button className="btn-secondary" onClick={handleEditPostClick}><Edit2 size={16}/> 수정</button>
+                        <button className="btn-secondary" style={{ color: '#ff6b6b' }} onClick={() => handleDeletePost(activePost.id)}><Trash2 size={16}/> 삭제</button>
+                      </div>
+                    </div>
+
+                    <div className="board-comments" style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '32px' }}>
+                      <h3 style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}><MessageCircle size={20}/> 댓글 {boardComments.length}개</h3>
+                      
+                      <div className="comments-list" style={{ marginBottom: '32px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        {boardComments.map(comment => (
+                          <div className="comment-item" key={comment.id} style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '12px' }}>
+                            <div className="comment-header" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                              <span className="comment-author" style={{ fontWeight: 'bold' }}>{comment.author}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <span className="comment-date" style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>{new Date(comment.created_at).toLocaleString()}</span>
+                                <button className="icon-btn" style={{ padding: '4px' }} onClick={() => handleDeleteComment(comment.id)} title="댓글 삭제"><Trash2 size={14}/></button>
+                              </div>
+                            </div>
+                            <div className="comment-body" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>{comment.content}</div>
+                          </div>
+                        ))}
+                        {boardComments.length === 0 && (
+                          <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '20px 0' }}>첫 댓글을 남겨보세요!</div>
+                        )}
+                      </div>
+
+                      <form className="comment-form" onSubmit={handleCommentSubmit} style={{ background: 'rgba(0,0,0,0.2)', padding: '20px', borderRadius: '12px' }}>
+                        <div className="comment-inputs" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                          <input className="form-control" value={commentAuthor} onChange={e => setCommentAuthor(e.target.value)} required placeholder="닉네임" />
+                          <input type="password" className="form-control" value={commentPassword} onChange={e => setCommentPassword(e.target.value)} required placeholder="비밀번호" />
+                        </div>
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                          <input className="form-control" value={commentContent} onChange={e => setCommentContent(e.target.value)} required placeholder="댓글을 남겨보세요..." style={{ flex: 1 }} />
+                          <button type="submit" className="btn-primary-glow" style={{ padding: '0 24px', whiteSpace: 'nowrap' }}>등록</button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </>

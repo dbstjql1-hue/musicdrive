@@ -2541,7 +2541,6 @@ body {
   transition: transform 0.25s ease, box-shadow 0.25s ease;
 }
 
-/* 확장 버튼 스타일 */
 .expand-btn {
   margin-left: 12px;
   transition: var(--transition);
@@ -2550,4 +2549,105 @@ body {
   color: var(--secondary) !important;
   transform: scale(1.2);
   filter: drop-shadow(0 0 6px var(--secondary-glow));
+}
+
+/* ==========================================
+   Board Page Styles
+   ========================================== */
+
+.board-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-bottom: 60px;
+}
+
+.board-hero {
+  border-radius: 20px;
+  margin-bottom: 24px;
+}
+
+.board-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: var(--bg-card);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-premium);
+  border: 1px solid var(--border-color);
+}
+
+.board-table th, .board-table td {
+  padding: 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 14px;
+}
+
+.board-table th {
+  background-color: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.board-table tbody tr {
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.board-table tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.board-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.board-id, .board-views {
+  width: 80px;
+  color: var(--text-secondary);
+  text-align: center !important;
+}
+.board-table th:nth-child(1), .board-table th:nth-child(4) {
+  text-align: center;
+}
+
+.board-author {
+  width: 140px;
+  color: var(--secondary);
+}
+
+.board-date {
+  width: 120px;
+  color: var(--text-secondary);
+}
+
+.board-title-cell {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.board-table tbody tr:hover .board-title-cell {
+  color: var(--primary);
+}
+
+.board-textarea {
+  font-family: inherit;
+  line-height: 1.6;
+}
+
+.comment-delete-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: var(--transition);
+}
+.comment-delete-btn:hover {
+  color: #ff4d6d;
 }
