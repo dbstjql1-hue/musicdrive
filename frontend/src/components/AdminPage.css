@@ -1,0 +1,135 @@
+.admin-container {
+  padding: 2rem;
+  max-width: 1000px;
+  margin: 0 auto;
+  color: white;
+  background-color: #121212;
+  min-height: 100vh;
+}
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 2rem;
+  gap: 1rem;
+}
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: none;
+  border: none;
+  color: #a0a0a0;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.back-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.admin-table-container {
+  background: #1e1e1e;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid #333;
+}
+
+.admin-table th {
+  background: #252525;
+  font-weight: 600;
+  color: #a0a0a0;
+}
+
+.role-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.role-badge.admin {
+  background: rgba(255, 64, 129, 0.2);
+  color: #ff4081;
+}
+
+.role-badge.user {
+  background: rgba(64, 196, 255, 0.2);
+  color: #40c4ff;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.role-btn,
+.delete-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+}
+
+.role-btn:disabled,
+.delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.role-btn.grant {
+  background: #1e88e5;
+  color: white;
+}
+
+.role-btn.grant:hover:not(:disabled) {
+  background: #1976d2;
+}
+
+.role-btn.revoke {
+  background: #f57c00;
+  color: white;
+}
+
+.role-btn.revoke:hover:not(:disabled) {
+  background: #e65100;
+}
+
+.delete-btn {
+  background: #d32f2f;
+  color: white;
+}
+
+.delete-btn:hover:not(:disabled) {
+  background: #c62828;
+}
+
+.admin-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  color: white;
+  font-size: 1.25rem;
+}

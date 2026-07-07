@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from './supabaseClient';
 import {
   Home,
   Search,
@@ -30,7 +32,10 @@ import {
   MessageSquare,
   MessageCircle,
   Eye,
-  User
+  User,
+  LogIn,
+  LogOut,
+  Settings
 } from 'lucide-react';
 import { PoemAnimation } from './components/ui/3d-animation';
 import './App.css';
@@ -46,7 +51,11 @@ if (!sessionId) {
   localStorage.setItem('musicdrive_session_id', sessionId);
 }
 
-function App() {
+function MainApp() {
+  const navigate = useNavigate();
+  const [userSession, setUserSession] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
+
   // Navigation & Views
   const [currentView, setCurrentView] = useState('home'); // 'home', 'search', 'playlists', 'admin'
   const [selectedPlaylist, setSelectedPlaylist] = useState(null); // 특정 플레이리스트 선택 시 저장
@@ -158,6 +167,43 @@ function App() {
   
   // Toast UI
   const [toastMessage, setToastMessage] = useState('');
+
+  // Supabase Auth
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUserSession(session);
+      if (session) fetchUserProfile(session.user.id);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserSession(session);
+      if (session) {
+        fetchUserProfile(session.user.id);
+      } else {
+        setUserProfile(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchUserProfile = async (userId) => {
+    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    if (data) setUserProfile(data);
+  };
+
+  const handleGoogleLogin = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      }
+    });
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
   
   // HTML Audio Ref
   const audioRef = useRef(new Audio());
@@ -1490,6 +1536,51 @@ function App() {
             </div>
           </li>
         </ul>
+
+        {/* Auth Section */}
+        <div className="auth-section" style={{ marginTop: 'auto', padding: '1rem' }}>
+          {userSession ? (
+            <div className="user-profile">
+              <div className="user-info" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                <div className="user-avatar" style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#333', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <User size={16} />
+                </div>
+                <div style={{ fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {userSession.user.email}
+                </div>
+              </div>
+              
+              {userProfile?.role === 'admin' && (
+                <button 
+                  className="btn-secondary" 
+                  style={{ width: '100%', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                  onClick={() => { navigate('/admin'); closeMobileMenu(); }}
+                >
+                  <Settings size={16} />
+                  어드민 설정
+                </button>
+              )}
+              
+              <button 
+                className="btn-secondary" 
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                onClick={handleLogout}
+              >
+                <LogOut size={16} />
+                로그아웃
+              </button>
+            </div>
+          ) : (
+            <button 
+              className="play-btn-premium" 
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem' }}
+              onClick={handleGoogleLogin}
+            >
+              <LogIn size={16} />
+              구글 로그인
+            </button>
+          )}
+        </div>
       </nav>
 
       {/* Main Panel Content */}
@@ -3061,6 +3152,18 @@ function App() {
         </div>
       )}
     </div>
+  );
+}
+
+import { Routes, Route } from 'react-router-dom';
+import AdminPage from './components/AdminPage';
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<MainApp />} />
+      <Route path="/admin" element={<AdminPage />} />
+    </Routes>
   );
 }
 
