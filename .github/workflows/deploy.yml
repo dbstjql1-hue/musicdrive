@@ -17,7 +17,7 @@ jobs:
           project: dbstjql1/musicdrive
           stage: main
           yaml: |
-            name: musicdrive-backend
+            name: musicdrive
             app: node
             options:
               nodeversion: 18
