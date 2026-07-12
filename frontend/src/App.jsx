@@ -25,6 +25,7 @@ import {
   Edit2,
   Trophy,
   Clock,
+  Lock,
   Menu,
   ChevronDown,
   Maximize2,
