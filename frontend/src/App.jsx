@@ -107,6 +107,8 @@ function MainApp() {
   const [audioFile, setAudioFile] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [adminTab, setAdminTab] = useState('upload'); // 'upload', 'members'
+  const [memberList, setMemberList] = useState([]);
   
   // Fullscreen Modal Player States
   const [isFullscreenPlayerOpen, setIsFullscreenPlayerOpen] = useState(false);
@@ -1252,7 +1254,23 @@ function MainApp() {
     }
   };
 
-  // 6. 어드민 음원 업로드 처리
+  const fetchMembers = async () => {
+    const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    if (data) setMemberList(data);
+  };
+
+  const toggleMemberRole = async (memberId, currentRole) => {
+    const newRole = currentRole === 'admin' ? 'user' : 'admin';
+    const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', memberId);
+    if (!error) {
+      setMemberList(memberList.map(m => m.id === memberId ? { ...m, role: newRole } : m));
+      showToast('권한이 변경되었습니다.');
+    } else {
+      showToast('권한 변경에 실패했습니다.');
+    }
+  };
+
+  // 6. 어드민 인증 처리업로드 처리
   const handleAdminAuth = async (e) => {
     e.preventDefault();
     if (!adminPassword) {
@@ -2223,9 +2241,15 @@ function MainApp() {
                   </div>
                 ) : (
                   <>
-                    <div className="admin-card">
-                    <h2 style={{ marginBottom: '24px', textAlign: 'left' }}>음원 신규 등록</h2>
-                    <form onSubmit={handleUploadSubmit}>
+                    <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '16px' }}>
+                      <button className={adminTab === 'upload' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => setAdminTab('upload')}>음원 등록</button>
+                      <button className={adminTab === 'members' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => { setAdminTab('members'); fetchMembers(); }}>회원 관리</button>
+                    </div>
+
+                    {adminTab === 'upload' && (
+                      <div className="admin-card">
+                      <h2 style={{ marginBottom: '24px', textAlign: 'left' }}>음원 신규 등록</h2>
+                      <form onSubmit={handleUploadSubmit}>
                       <div className="form-group">
                         <label>곡 제목 *</label>
                         <input 
@@ -2321,9 +2345,61 @@ function MainApp() {
                           {isUploading ? '업로드 중...' : '음원 등록하기'}
                         </button>
                       </div>
+                      </div>
                     </form>
                   </div>
-                  {/* Removed local sync card to prevent confusion on production */}
+                  )}
+
+                  {adminTab === 'members' && (
+                    <div className="admin-card">
+                      <h2 style={{ marginBottom: '24px', textAlign: 'left' }}>회원 권한 관리</h2>
+                      <div className="table-responsive">
+                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                              <th style={{ padding: '12px 8px', color: 'var(--text-secondary)' }}>이메일</th>
+                              <th style={{ padding: '12px 8px', color: 'var(--text-secondary)' }}>가입일</th>
+                              <th style={{ padding: '12px 8px', color: 'var(--text-secondary)' }}>현재 권한</th>
+                              <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', textAlign: 'right' }}>관리</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {memberList.map(member => (
+                              <tr key={member.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                <td style={{ padding: '16px 8px' }}>{member.email}</td>
+                                <td style={{ padding: '16px 8px', color: 'var(--text-secondary)', fontSize: '13px' }}>{new Date(member.created_at).toLocaleDateString()}</td>
+                                <td style={{ padding: '16px 8px' }}>
+                                  <span style={{ 
+                                    padding: '4px 8px', 
+                                    borderRadius: '4px', 
+                                    fontSize: '12px', 
+                                    background: member.role === 'admin' ? 'rgba(168, 85, 247, 0.2)' : 'rgba(255,255,255,0.1)',
+                                    color: member.role === 'admin' ? '#d8b4fe' : '#ccc'
+                                  }}>
+                                    {member.role === 'admin' ? '관리자' : '일반 유저'}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '16px 8px', textAlign: 'right' }}>
+                                  <button 
+                                    className="btn-secondary" 
+                                    style={{ padding: '6px 12px', fontSize: '12px' }}
+                                    onClick={() => toggleMemberRole(member.id, member.role)}
+                                  >
+                                    {member.role === 'admin' ? '일반 강등' : '어드민 승격'}
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                            {memberList.length === 0 && (
+                              <tr>
+                                <td colSpan="4" style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>회원 목록을 불러오는 중이거나 없습니다.</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
               </div>
