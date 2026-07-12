@@ -118,6 +118,7 @@ function MainApp() {
   const [isUploading, setIsUploading] = useState(false);
   const [adminTab, setAdminTab] = useState('dashboard'); // 'dashboard', 'upload', 'members'
   const [adminStats, setAdminStats] = useState(null);
+  const [adminVsStats, setAdminVsStats] = useState(null);
   const [memberList, setMemberList] = useState([]);
   
   // Fullscreen Modal Player States
@@ -185,6 +186,7 @@ function MainApp() {
   useEffect(() => {
     if (userSession?.user?.id) {
       fetchPlaylists();
+      fetchVSMatches();
     } else {
       setPlaylists([]);
     }
@@ -628,7 +630,7 @@ function MainApp() {
 
   async function fetchVSMatches() {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/vs-matches?sessionId=${sessionId}`);
+      const res = await fetch(`${API_BASE_URL}/api/vs-matches?userId=${userSession?.user?.id || ''}`);
       if (res.ok) {
         const data = await res.json();
         setVsMatches(data);
@@ -683,13 +685,14 @@ function MainApp() {
   };
 
   const handleVSVote = async (matchId, songId) => {
+    if (!requireLogin()) return;
     try {
       const res = await fetch(`${API_BASE_URL}/api/vs-matches/${matchId}/vote`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ songId, sessionId })
+        body: JSON.stringify({ songId, userId: userSession?.user?.id })
       });
 
       if (res.ok) {
@@ -1292,6 +1295,18 @@ function MainApp() {
   };
 
 
+
+  const fetchAdminVsStats = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/vs-stats`);
+      if (res.ok) {
+        const data = await res.json();
+        setAdminVsStats(data);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const fetchMembers = async () => {
     const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
@@ -2278,6 +2293,7 @@ function MainApp() {
                   <>
                     <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '16px' }}>
                       <button className={adminTab === 'dashboard' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => { setAdminTab('dashboard'); fetchAdminStats(); }}>대시보드</button>
+                      <button className={adminTab === 'vsstats' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => { setAdminTab('vsstats'); fetchAdminVsStats(); }}>투표 통계</button>
                       <button className={adminTab === 'upload' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => setAdminTab('upload')}>음원 등록</button>
                       <button className={adminTab === 'members' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => { setAdminTab('members'); fetchMembers(); }}>회원 관리</button>
                     </div>
@@ -2342,6 +2358,43 @@ function MainApp() {
                     )}
                     <div style={{ display: 'none' }}>
                     </div>
+
+                    {adminTab === 'vsstats' && (
+                      <div className="admin-card">
+                        <h2 style={{ marginBottom: '24px', textAlign: 'left' }}>투표 통계</h2>
+                        {!adminVsStats ? (
+                          <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>투표 데이터를 불러오는 중...</div>
+                        ) : (
+                          <div className="table-responsive">
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                              <thead>
+                                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                  <th style={{ padding: '8px', color: 'var(--text-secondary)' }}>유저 이메일</th>
+                                  <th style={{ padding: '8px', color: 'var(--text-secondary)' }}>대결 주제</th>
+                                  <th style={{ padding: '8px', color: 'var(--text-secondary)' }}>투표한 노래</th>
+                                  <th style={{ padding: '8px', color: 'var(--text-secondary)' }}>투표 일시</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {adminVsStats.map(vote => (
+                                  <tr key={vote.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                    <td style={{ padding: '8px' }}>{vote.profiles?.email || '알 수 없음'}</td>
+                                    <td style={{ padding: '8px' }}>{vote.vs_matches?.title}</td>
+                                    <td style={{ padding: '8px' }}>{vote.songs?.title} - {vote.songs?.artist}</td>
+                                    <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{new Date(vote.created_at).toLocaleString()}</td>
+                                  </tr>
+                                ))}
+                                {adminVsStats.length === 0 && (
+                                  <tr>
+                                    <td colSpan="4" style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)' }}>투표 이력이 없습니다.</td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {adminTab === 'upload' && (
                       <div className="admin-card">
