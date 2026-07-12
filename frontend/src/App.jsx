@@ -93,6 +93,7 @@ function MainApp() {
   
   // Data State
   const [songs, setSongs] = useState([]);
+  const songFallbackNoticeShownRef = useRef(false);
   const [playlists, setPlaylists] = useState([]);
   const [likedSongIds, setLikedSongIds] = useState([]);
   const [categories] = useState(['전체', '발라드', '댄스', '힙합', '케이팝', '펑크', '트로트', '재즈', '레트로', '레게', '디스코', '팝', 'EDM', 'OST', '기타']);
@@ -938,39 +939,76 @@ function MainApp() {
   };
 
   async function fetchSongs(query = '', category = '') {
+    const baseUrl = import.meta.env.BASE_URL;
+    const normalizeSongUrls = (songList) => songList.map(song => {
+      const processUrl = (path) => {
+        if (!path) return '';
+        if (path.startsWith('http')) return path;
+        if (path.startsWith('/')) {
+          const normalizedBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+          return normalizedBase + path;
+        }
+        return path;
+      };
+
+      return {
+        ...song,
+        audio_url: processUrl(song.audio_url),
+        cover_url: processUrl(song.cover_url)
+      };
+    });
+
+    const filterSongs = (songList) => {
+      const normalizedQuery = query.trim().toLowerCase();
+      return songList.filter(song => {
+        const matchesQuery = !normalizedQuery
+          || song.title?.toLowerCase().includes(normalizedQuery)
+          || song.artist?.toLowerCase().includes(normalizedQuery);
+        const matchesCategory = !category || category === '전체' || song.category === category;
+        return matchesQuery && matchesCategory;
+      });
+    };
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+
     try {
       const url = `${API_BASE_URL}/api/songs?query=${encodeURIComponent(query)}&category=${encodeURIComponent(category)}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        let data = await res.json();
-        
-        // 깃허브 페이지 호환성(BASE_URL)을 위한 미디어 경로 재설정
-        const baseUrl = import.meta.env.BASE_URL;
-        data = data.map(s => {
-          // DB의 /songs/...wav 형태를 BASE_URL/songs/... 로 치환
-          const processUrl = (path) => {
-            if (!path) return '';
-            if (path.startsWith('http')) return path; // 이미 절대 URL인 경우 그대로
-            if (path.startsWith('/')) {
-              // baseUrl이 '/'일 경우 중복 슬래시 방지
-              const b = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-              return b + path;
-            }
-            return path;
-          };
-          
-          return {
-            ...s,
-            audio_url: processUrl(s.audio_url),
-            cover_url: processUrl(s.cover_url)
-          };
-        });
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) throw new Error(`음원 API 응답 오류: ${response.status}`);
 
-        setSongs(data);
+      const data = await response.json();
+      if (!Array.isArray(data)) throw new Error('음원 API 응답 형식이 올바르지 않습니다.');
+
+      setSongs(normalizeSongUrls(data));
+      songFallbackNoticeShownRef.current = false;
+    } catch (apiError) {
+      console.warn('음원 API 연결 실패, 정적 데이터로 전환합니다:', apiError);
+
+      try {
+        const staticDataUrl = `${baseUrl}data/songs.json`;
+        const fallbackResponse = await fetch(staticDataUrl, { cache: 'no-cache' });
+        if (!fallbackResponse.ok) {
+          throw new Error(`정적 음원 데이터 응답 오류: ${fallbackResponse.status}`, { cause: apiError });
+        }
+
+        const fallbackData = await fallbackResponse.json();
+        if (!Array.isArray(fallbackData)) {
+          throw new Error('정적 음원 데이터 형식이 올바르지 않습니다.', { cause: apiError });
+        }
+
+        setSongs(normalizeSongUrls(filterSongs(fallbackData)));
+        if (!songFallbackNoticeShownRef.current) {
+          showToast('서버 연결이 원활하지 않아 저장된 음원 목록을 표시합니다.');
+          songFallbackNoticeShownRef.current = true;
+        }
+      } catch (fallbackError) {
+        console.error('음원 목록과 정적 데이터 모두 불러오지 못했습니다:', fallbackError);
+        setSongs([]);
+        showToast('음원 목록을 불러오지 못했습니다. 백엔드 서버 상태를 확인해 주세요.');
       }
-    } catch (err) {
-      console.error('음원 가져오기 오류:', err);
-      showToast('정적 데이터 파일을 불러오지 못했습니다.');
+    } finally {
+      window.clearTimeout(timeoutId);
     }
   }
 
