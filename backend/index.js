@@ -1262,6 +1262,120 @@ app.get('/api/admin/stats', async (req, res) => {
   }
 });
 
+
+// ==========================================
+// 노래 만들기 (Song Requests) API
+// ==========================================
+
+// 1. 요청 목록 조회 (내용 제외, 제목만 반환)
+app.get('/api/song-requests', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('song_requests')
+      .select('id, title, user_id, created_at, profiles(email)')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error('요청 목록 조회 오류:', err.message);
+    res.status(500).json({ error: '목록을 불러올 수 없습니다.' });
+  }
+});
+
+// 2. 요청 상세 조회 (작성자 또는 관리자만 내용 열람 가능)
+app.get('/api/song-requests/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.query;
+
+    if (!userId) return res.status(403).json({ error: '로그인이 필요합니다.' });
+
+    // 유저 권한 확인
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', userId).single();
+    const isAdmin = profile?.role === 'admin';
+
+    // 게시글 조회
+    const { data: request, error: reqErr } = await supabase
+      .from('song_requests')
+      .select('*, profiles(email)')
+      .eq('id', id)
+      .single();
+
+    if (reqErr || !request) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
+
+    // 권한 체크
+    if (request.user_id !== userId && !isAdmin) {
+      return res.status(403).json({ error: '내용을 볼 수 있는 권한이 없습니다.' });
+    }
+
+    // 댓글 조회
+    const { data: comments, error: comErr } = await supabase
+      .from('song_request_comments')
+      .select('*, profiles(email, role)')
+      .eq('request_id', id)
+      .order('created_at', { ascending: true });
+
+    if (comErr) throw comErr;
+
+    res.json({ ...request, comments: comments || [] });
+  } catch (err) {
+    console.error('요청 상세 조회 오류:', err.message);
+    res.status(500).json({ error: '상세 내용을 불러올 수 없습니다.' });
+  }
+});
+
+// 3. 새 요청 작성
+app.post('/api/song-requests', async (req, res) => {
+  try {
+    const { userId, title, content } = req.body;
+    if (!userId || !title || !content) return res.status(400).json({ error: '모든 항목을 입력해주세요.' });
+
+    const { data, error } = await supabase
+      .from('song_requests')
+      .insert([{ user_id: userId, title, content }])
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (err) {
+    console.error('요청 작성 오류:', err.message);
+    res.status(500).json({ error: '글을 작성할 수 없습니다.' });
+  }
+});
+
+// 4. 요청에 댓글 작성 (작성자 또는 관리자만)
+app.post('/api/song-requests/:id/comments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, content } = req.body;
+
+    if (!userId || !content) return res.status(400).json({ error: '내용을 입력해주세요.' });
+
+    // 유저 권한 및 게시글 확인
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', userId).single();
+    const isAdmin = profile?.role === 'admin';
+
+    const { data: request } = await supabase.from('song_requests').select('user_id').eq('id', id).single();
+    
+    if (!request) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
+    if (request.user_id !== userId && !isAdmin) return res.status(403).json({ error: '댓글을 작성할 권한이 없습니다.' });
+
+    const { data, error } = await supabase
+      .from('song_request_comments')
+      .insert([{ request_id: id, user_id: userId, content }])
+      .select('*, profiles(email, role)')
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (err) {
+    console.error('댓글 작성 오류:', err.message);
+    res.status(500).json({ error: '댓글을 작성할 수 없습니다.' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
 });
