@@ -84,7 +84,7 @@ body {
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
-  padding: 24px 16px;
+  padding: 24px 16px 120px 16px; /* Increased bottom padding to prevent overlap with bottom-player */
   flex-shrink: 0;
 }
 
