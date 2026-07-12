@@ -181,6 +181,15 @@ function MainApp() {
   const [toastMessage, setToastMessage] = useState('');
 
   // Supabase Auth (하이브리드 모드 - Auth 기능 복구)
+
+  useEffect(() => {
+    if (userSession?.user?.id) {
+      fetchPlaylists();
+    } else {
+      setPlaylists([]);
+    }
+  }, [userSession]);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUserSession(session);
@@ -974,8 +983,9 @@ function MainApp() {
   // -----------------------
 
   async function fetchPlaylists() {
+    if (!userSession?.user?.id) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/playlists`);
+      const res = await fetch(`${API_BASE_URL}/api/playlists?userId=${userSession.user.id}`);
       if (res.ok) {
         const data = await res.json();
         setPlaylists(data);
@@ -1205,7 +1215,7 @@ function MainApp() {
       const res = await fetch(`${API_BASE_URL}/api/playlists`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newPlaylistName, description: newPlaylistDesc })
+        body: JSON.stringify({ name: newPlaylistName, description: newPlaylistDesc, userId: userSession?.user?.id })
       });
       if (res.ok) {
         showToast(`플레이리스트 '${newPlaylistName}'이(가) 생성되었습니다.`);
