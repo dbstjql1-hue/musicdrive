@@ -2345,7 +2345,6 @@ function MainApp() {
                           {isUploading ? '업로드 중...' : '음원 등록하기'}
                         </button>
                       </div>
-                      </div>
                     </form>
                   </div>
                   )}
