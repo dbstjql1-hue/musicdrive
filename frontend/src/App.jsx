@@ -51,6 +51,25 @@ import { supabase } from './supabaseClient';
 import { trackActivity } from './analytics';
 
 // API Base URL (Vercel 배포 시 환경 변수 설정 권장)
+
+const SONG_REQUEST_TEMPLATE = `곡 주제 및 제목 
+( 예시 : 꿈 , 드라이브 , 새벽 , 바다 , 사랑 , 이별 등등 )
+
+곡의 용도는 ?
+( 예시 : BGM , 공연음악 , 게임음악 , 릴스 등등 )
+
+곡의 길이는 ?
+
+장르는 ? 
+( 예시 : 발라드 , 힙합 , 디스코 , 레게 , 재즈 등등 )
+
+보컬은 ?
+( 예시 : 남자 , 여자 , 듀엣 등등 좋아하는 가수의 목소리 예시등 )
+
+노랫말은 ?
+
+( 넣고싶은  가사나 이야기들을 써주시면 됩니다 )`;
+
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/+$/, '');
 
 // 브라우저 로컬 저장소 세션 ID 로드 또는 생성 (좋아요 중복 방지용)
@@ -182,6 +201,13 @@ function MainApp() {
   const [boardTitle, setBoardTitle] = useState('');
   const [boardAuthor, setBoardAuthor] = useState('');
   const [boardPassword, setBoardPassword] = useState('');
+  
+  // 노래 만들기 게시판 상태
+  const [songRequests, setSongRequests] = useState([]);
+  const [songRequestView, setSongRequestView] = useState('list'); // list, write, detail
+  const [selectedSongRequest, setSelectedSongRequest] = useState(null);
+  const [songRequestForm, setSongRequestForm] = useState({ title: '', content: SONG_REQUEST_TEMPLATE });
+  const [songRequestComment, setSongRequestComment] = useState('');
   const [boardContent, setBoardContent] = useState('');
   const [commentAuthor, setCommentAuthor] = useState('');
   const [commentPassword, setCommentPassword] = useState('');
@@ -635,6 +661,7 @@ function MainApp() {
     fetchLikedSongs();
     fetchVSMatches();
     fetchBoardPosts();
+    fetchSongRequests();
   }, []);
 
   async function fetchBoardPosts() {
@@ -1728,6 +1755,15 @@ function MainApp() {
               <span>자유게시판</span>
             </div>
           </li>
+          <li>
+            <div 
+              className={`nav-item ${currentView === 'song-requests' ? 'active' : ''}`}
+              onClick={() => { if (requireLogin()) { setCurrentView('song-requests'); setSelectedPlaylist(null); closeMobileMenu(); } }}
+            >
+              <Music className="icon" />
+              <span>노래 만들기</span>
+            </div>
+          </li>
           
         </ul>
 
@@ -2634,6 +2670,179 @@ function MainApp() {
                   )}
                 </>
               )}
+              </div>
+            )}
+
+            
+            {/* 노래 만들기 화면 */}
+            {currentView === 'song-requests' && (
+              <div className="board-container">
+                {songRequestView === 'list' && (
+                  <>
+                    <div className="hero-banner board-hero" style={{ background: 'linear-gradient(135deg, rgba(30, 200, 150, 0.3) 0%, rgba(15, 15, 25, 0.4) 100%)' }}>
+                      <div className="hero-content">
+                        <span className="hero-tag">Private Request</span>
+                        <h1 className="hero-title">노래 만들기</h1>
+                        <p className="hero-desc">나만의 곡을 요청하고 관리자와 1:1로 소통해보세요!</p>
+                        <button 
+                          className="play-btn-premium"
+                          onClick={() => {
+                            setSongRequestForm({ title: '', content: SONG_REQUEST_TEMPLATE });
+                            setSongRequestView('write');
+                          }}
+                        >
+                          <Plus size={18} />
+                          작성하기
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="board-list">
+                      <div className="board-header">
+                        <div className="b-col-id">번호</div>
+                        <div className="b-col-title">제목</div>
+                        <div className="b-col-author">작성자</div>
+                        <div className="b-col-date">작성일</div>
+                      </div>
+                      
+                      {songRequests.length === 0 ? (
+                        <div className="empty-state">
+                          <Music size={48} opacity={0.3} />
+                          <p>첫 번째 노래 만들기 요청을 남겨보세요!</p>
+                        </div>
+                      ) : (
+                        songRequests.map((req, idx) => (
+                          <div 
+                            className="board-row" 
+                            key={req.id}
+                            onClick={() => fetchSongRequestDetail(req.id)}
+                          >
+                            <div className="b-col-id">{songRequests.length - idx}</div>
+                            <div className="b-col-title">
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Lock size={14} style={{ color: 'var(--text-secondary)' }} />
+                                {req.title}
+                              </span>
+                            </div>
+                            <div className="b-col-author">{req.profiles?.email?.split('@')[0] || '익명'}</div>
+                            <div className="b-col-date">{new Date(req.created_at).toLocaleDateString()}</div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {songRequestView === 'write' && (
+                  <div className="board-write-form">
+                    <h2>노래 만들기 요청 작성</h2>
+                    <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '13px' }}>* 작성하신 내용은 본인과 관리자만 볼 수 있습니다.</p>
+                    <form onSubmit={handleSongRequestSubmit}>
+                      <div className="form-group">
+                        <label>제목</label>
+                        <input 
+                          type="text" 
+                          required 
+                          value={songRequestForm.title}
+                          onChange={e => setSongRequestForm({...songRequestForm, title: e.target.value})}
+                          placeholder="원하시는 곡의 제목이나 주제를 적어주세요."
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>요청 내용</label>
+                        <textarea 
+                          required 
+                          rows="15"
+                          value={songRequestForm.content}
+                          onChange={e => setSongRequestForm({...songRequestForm, content: e.target.value})}
+                        ></textarea>
+                      </div>
+                      
+                      <div className="form-actions" style={{ display: 'flex', gap: '16px', marginTop: '24px' }}>
+                        <button type="submit" className="btn-primary-glow">등록하기</button>
+                        <button type="button" className="btn-secondary" onClick={() => setSongRequestView('list')}>취소</button>
+                      </div>
+                    </form>
+                  </div>
+                )}
+
+                {songRequestView === 'detail' && selectedSongRequest && (
+                  <div className="board-detail-container">
+                    <div className="board-detail-header">
+                      <h2 className="detail-title">{selectedSongRequest.title}</h2>
+                      <div className="detail-meta">
+                        <span><User size={14} /> {selectedSongRequest.profiles?.email?.split('@')[0] || '익명'}</span>
+                        <span><Clock size={14} /> {new Date(selectedSongRequest.created_at).toLocaleString()}</span>
+                        <span style={{ color: 'var(--primary-color)' }}><Lock size={14} /> 비밀글</span>
+                      </div>
+                    </div>
+                    
+                    <div className="board-detail-content" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
+                      {selectedSongRequest.content}
+                    </div>
+
+                    <div className="comments-section" style={{ marginTop: '40px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '24px' }}>
+                      <h3 style={{ marginBottom: '20px', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <MessageSquare size={16} /> 1:1 대화 (${selectedSongRequest.comments?.length || 0})
+                      </h3>
+                      
+                      <div className="comments-list" style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
+                        {selectedSongRequest.comments?.length === 0 ? (
+                          <div style={{ color: 'var(--text-secondary)', fontSize: '13px', textAlign: 'center', padding: '20px' }}>아직 대화 내역이 없습니다.</div>
+                        ) : (
+                          selectedSongRequest.comments?.map(comment => {
+                            const isMe = comment.user_id === userSession?.user?.id;
+                            const isAdminComment = comment.profiles?.role === 'admin';
+                            
+                            return (
+                              <div key={comment.id} style={{ 
+                                display: 'flex', 
+                                flexDirection: 'column',
+                                alignItems: isMe ? 'flex-end' : 'flex-start'
+                              }}>
+                                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  {isAdminComment ? <ShieldCheck size={12} style={{ color: 'var(--primary-color)' }} /> : <User size={12} />}
+                                  {isAdminComment ? '관리자' : (comment.profiles?.email?.split('@')[0] || '작성자')}
+                                </div>
+                                <div style={{
+                                  background: isMe ? 'var(--primary-color)' : 'rgba(255,255,255,0.1)',
+                                  color: '#fff',
+                                  padding: '12px 16px',
+                                  borderRadius: '16px',
+                                  borderTopRightRadius: isMe ? '4px' : '16px',
+                                  borderTopLeftRadius: isMe ? '16px' : '4px',
+                                  maxWidth: '80%',
+                                  lineHeight: '1.5',
+                                  whiteSpace: 'pre-wrap'
+                                }}>
+                                  {comment.content}
+                                </div>
+                                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                                  {new Date(comment.created_at).toLocaleTimeString()}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      <form onSubmit={handleSongRequestCommentSubmit} style={{ display: 'flex', gap: '12px', background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '12px' }}>
+                        <textarea 
+                          required
+                          placeholder="메시지를 입력하세요..."
+                          value={songRequestComment}
+                          onChange={e => setSongRequestComment(e.target.value)}
+                          style={{ flex: 1, background: 'transparent', border: 'none', color: '#fff', resize: 'none', height: '40px', outline: 'none' }}
+                        ></textarea>
+                        <button type="submit" className="btn-primary-glow" style={{ padding: '0 24px', borderRadius: '24px' }}>전송</button>
+                      </form>
+                    </div>
+
+                    <div className="board-detail-actions" style={{ marginTop: '24px' }}>
+                      <button className="btn-secondary" onClick={() => setSongRequestView('list')}>목록으로</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
