@@ -1,10 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Home,
   Search,
   Music,
-  PlusCircle,
   Play,
   Pause,
   SkipForward,
@@ -33,19 +31,13 @@ import {
   MessageCircle,
   Eye,
   User,
-  Users,
   LogIn,
   LogOut,
   Settings,
-  Activity,
-  BarChart3,
-  Headphones,
-  RefreshCw,
   ShieldCheck,
-  TrendingUp,
-  Vote
 } from 'lucide-react';
 import { PoemAnimation } from './components/ui/3d-animation';
+import { AdminWorkspace } from './components/AdminWorkspace';
 import './App.css';
 import mascotImg from './assets/mascot.png';
 import { supabase } from './supabaseClient';
@@ -81,7 +73,6 @@ if (!sessionId) {
 }
 
 function MainApp() {
-  const navigate = useNavigate();
   const [userSession, setUserSession] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
 
@@ -1478,7 +1469,9 @@ function MainApp() {
   const fetchAdminStats = async () => {
     try {
       setAdminStats(null);
-      const res = await fetch(`${API_BASE_URL}/api/admin/stats`);
+      const res = await fetch(`${API_BASE_URL}/api/admin/stats`, {
+        headers: { 'x-admin-password': adminPassword }
+      });
       if (res.ok) {
         const data = await res.json();
         setAdminStats(data);
@@ -1496,7 +1489,9 @@ function MainApp() {
   const fetchAdminVsStats = async () => {
     try {
       setAdminVsStats(null);
-      const res = await fetch(`${API_BASE_URL}/api/admin/vs-stats`);
+      const res = await fetch(`${API_BASE_URL}/api/admin/vs-stats`, {
+        headers: { 'x-admin-password': adminPassword }
+      });
       if (res.ok) {
         const data = await res.json();
         setAdminVsStats(data);
@@ -1510,9 +1505,13 @@ function MainApp() {
   };
 
   const fetchMembers = async () => {
-    const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-    if (data) setMemberList(data);
-    if (error) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/members`, {
+        headers: { 'x-admin-password': adminPassword }
+      });
+      if (!response.ok) throw new Error('회원 목록 조회 실패');
+      setMemberList(await response.json());
+    } catch (error) {
       console.error(error);
       showToast('회원 목록을 불러오지 못했습니다.');
     }
@@ -1520,11 +1519,18 @@ function MainApp() {
 
   const toggleMemberRole = async (memberId, currentRole) => {
     const newRole = currentRole === 'admin' ? 'user' : 'admin';
-    const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', memberId);
-    if (!error) {
-      setMemberList(memberList.map(m => m.id === memberId ? { ...m, role: newRole } : m));
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/members/${memberId}/role`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-admin-password': adminPassword },
+        body: JSON.stringify({ role: newRole })
+      });
+      if (!response.ok) throw new Error('회원 권한 변경 실패');
+      const updatedMember = await response.json();
+      setMemberList(memberList.map(member => member.id === memberId ? updatedMember : member));
       showToast('권한이 변경되었습니다.');
-    } else {
+    } catch (error) {
+      console.error(error);
       showToast('권한 변경에 실패했습니다.');
     }
   };
@@ -1532,7 +1538,9 @@ function MainApp() {
   // 미동기화 음원 조회
   const fetchUnsyncedSongs = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/unsynced-songs?adminPassword=${encodeURIComponent(adminPassword)}`);
+      const res = await fetch(`${API_BASE_URL}/api/admin/unsynced-songs`, {
+        headers: { 'x-admin-password': adminPassword }
+      });
       if (res.ok) {
         const data = await res.json();
         setUnsyncedData(data);
@@ -1584,11 +1592,11 @@ function MainApp() {
               setSyncLogs(prev => [...prev, event]);
 
               if (event.type === 'done') {
-                setSyncComplete(true);
+                setSyncComplete(Boolean(event.success));
                 setIsSyncing(false);
                 fetchUnsyncedSongs();
               }
-            } catch (e) {
+            } catch {
               // JSON 파싱 실패 무시
             }
           }
@@ -2558,497 +2566,53 @@ function MainApp() {
               </div>
             )}
 
-            {/* 4. 관리자 음원 업로드 화면 */}
+            {/* 4. 관리자 운영 화면 */}
             {currentView === 'admin' && (
-              <div>
-                {!isAdminAuthenticated ? (
-                  <div className="admin-card" style={{ maxWidth: '400px' }}>
-                    <h2 style={{ marginBottom: '16px', textAlign: 'center' }}>어드민 인증</h2>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '24px', textAlign: 'center' }}>
-                      음원을 새로 등록하고 관리하기 위해 패스워드를 입력해 주세요.
-                    </p>
-                    <form onSubmit={handleAdminAuth} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                      <div className="form-group">
-                        <label>비밀번호</label>
-                        <input 
-                          type="password" 
-                          className="form-control" 
-                          placeholder="어드민 비밀번호 입력"
-                          value={adminPassword}
-                          onChange={(e) => setAdminPassword(e.target.value)}
-                        />
-                      </div>
-                      <button type="submit" className="btn-primary-glow">인증하기</button>
-                    </form>
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '16px' }}>
-                      <button className={adminTab === 'dashboard' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => { setAdminTab('dashboard'); fetchAdminStats(); }}>대시보드</button>
-                      <button className={adminTab === 'vsstats' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => { setAdminTab('vsstats'); fetchAdminVsStats(); }}>투표 통계</button>
-                      <button className={adminTab === 'upload' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => setAdminTab('upload')}>음원 등록</button>
-                      <button className={adminTab === 'sync' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => { setAdminTab('sync'); fetchUnsyncedSongs(); }} style={{ position: 'relative' }}>
-                        🔄 동기화
-                        {unsyncedData && unsyncedData.unsyncedCount > 0 && (
-                          <span className="sync-badge-count">{unsyncedData.unsyncedCount}</span>
-                        )}
-                      </button>
-                      <button className={adminTab === 'members' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => { setAdminTab('members'); fetchMembers(); }}>회원 관리</button>
-                    </div>
-
-                    {adminTab === 'dashboard' && (
-                      <div className="admin-card">
-                        <h2 style={{ marginBottom: '24px', textAlign: 'left' }}>통계 대시보드</h2>
-                        {!adminStats ? (
-                          <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>통계 데이터를 불러오는 중...</div>
-                        ) : (
-                          <>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '32px' }}>
-                              <div style={{ background: 'rgba(255,255,255,0.05)', padding: '24px', borderRadius: '12px', textAlign: 'center' }}>
-                                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>총 가입 회원</div>
-                                <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{adminStats.totalUsers}명</div>
-                              </div>
-                              <div style={{ background: 'rgba(255,255,255,0.05)', padding: '24px', borderRadius: '12px', textAlign: 'center' }}>
-                                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>총 등록 음원</div>
-                                <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{adminStats.totalSongs}곡</div>
-                              </div>
-                            </div>
-
-                            <h3 style={{ marginBottom: '16px', fontSize: '16px' }}>인기 음원 TOP 5</h3>
-                            <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '16px', marginBottom: '32px' }}>
-                              {adminStats.topSongs.map((song, idx) => (
-                                <div key={song.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: idx < adminStats.topSongs.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
-                                  <span style={{ color: 'var(--text-primary)' }}>{idx + 1}. {song.title} - <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>{song.artist}</span></span>
-                                  <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>{song.play_count}회</span>
-                                </div>
-                              ))}
-                            </div>
-
-                            <h3 style={{ marginBottom: '16px', fontSize: '16px' }}>최근 재생 활동 (실시간)</h3>
-                            <div className="table-responsive">
-                              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                                <thead>
-                                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                                    <th style={{ padding: '8px', color: 'var(--text-secondary)' }}>유저 이메일</th>
-                                    <th style={{ padding: '8px', color: 'var(--text-secondary)' }}>재생한 노래</th>
-                                    <th style={{ padding: '8px', color: 'var(--text-secondary)' }}>재생 일시</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {adminStats.recentPlays.map(play => (
-                                    <tr key={play.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                      <td style={{ padding: '8px' }}>{play.profiles?.email || '알 수 없음'}</td>
-                                      <td style={{ padding: '8px' }}>{play.songs?.title} - {play.songs?.artist}</td>
-                                      <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{new Date(play.played_at).toLocaleString()}</td>
-                                    </tr>
-                                  ))}
-                                  {adminStats.recentPlays.length === 0 && (
-                                    <tr>
-                                      <td colSpan="3" style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)' }}>재생 이력이 없습니다.</td>
-                                    </tr>
-                                  )}
-                                </tbody>
-                              </table>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )}
-                    <div style={{ display: 'none' }}>
-                    </div>
-
-                    {adminTab === 'vsstats' && (
-                      <div className="admin-card">
-                        <h2 style={{ marginBottom: '24px', textAlign: 'left' }}>투표 통계</h2>
-                        {!adminVsStats ? (
-                          <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>투표 데이터를 불러오는 중...</div>
-                        ) : (
-                          <div className="table-responsive">
-                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                              <thead>
-                                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                                  <th style={{ padding: '8px', color: 'var(--text-secondary)' }}>유저 이메일</th>
-                                  <th style={{ padding: '8px', color: 'var(--text-secondary)' }}>대결 주제</th>
-                                  <th style={{ padding: '8px', color: 'var(--text-secondary)' }}>투표한 노래</th>
-                                  <th style={{ padding: '8px', color: 'var(--text-secondary)' }}>투표 일시</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {adminVsStats.map(vote => (
-                                  <tr key={vote.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                    <td style={{ padding: '8px' }}>{vote.profiles?.email || '알 수 없음'}</td>
-                                    <td style={{ padding: '8px' }}>{vote.vs_matches?.title}</td>
-                                    <td style={{ padding: '8px' }}>{vote.songs?.title} - {vote.songs?.artist}</td>
-                                    <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{new Date(vote.created_at).toLocaleString()}</td>
-                                  </tr>
-                                ))}
-                                {adminVsStats.length === 0 && (
-                                  <tr>
-                                    <td colSpan="4" style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)' }}>투표 이력이 없습니다.</td>
-                                  </tr>
-                                )}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {adminTab === 'upload' && (
-                      <div className="admin-card">
-                      <h2 style={{ marginBottom: '24px', textAlign: 'left' }}>음원 신규 등록</h2>
-                      <form onSubmit={handleUploadSubmit}>
-                      <div className="form-group">
-                        <label>곡 제목 *</label>
-                        <input 
-                          className="form-control" 
-                          placeholder="곡 제목을 입력하세요"
-                          value={uploadTitle}
-                          onChange={(e) => setUploadTitle(e.target.value)}
-                          required
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>아티스트 *</label>
-                        <input 
-                          className="form-control" 
-                          placeholder="아티스트명 또는 작곡가명을 입력하세요"
-                          value={uploadArtist}
-                          onChange={(e) => setUploadArtist(e.target.value)}
-                          required
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>장르 카테고리</label>
-                        <select 
-                          className="form-control"
-                          value={uploadCategory}
-                          onChange={(e) => setUploadCategory(e.target.value)}
-                        >
-                          {categories.filter(c => c !== '전체').map(c => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="form-group">
-                        <label>가사</label>
-                        <textarea 
-                          className="form-control" 
-                          style={{ minHeight: '120px', resize: 'vertical' }}
-                          placeholder="가사를 입력해 주세요. (예: [00:15.20] 동해물과 백두산이 [00:20.00] 마르고 닳도록...)\n* 시간 정보를 입력하지 않으면 전체 재생 시간에 맞춰 가사가 자동 스크롤됩니다."
-                          value={uploadLyrics}
-                          onChange={(e) => setUploadLyrics(e.target.value)}
-                        />
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '32px' }}>
-                        <div className="form-group">
-                          <label>음원 파일 * (.mp3, .wav, .m4a)</label>
-                          <div className="file-upload-box" onClick={() => document.getElementById('audio-input').click()}>
-                            <UploadCloud className="icon" />
-                            <span style={{ fontSize: '13px' }}>
-                              {audioFile ? audioFile.name : '음원 오디오 파일 선택'}
-                            </span>
-                            <input 
-                              type="file" 
-                              id="audio-input" 
-                              accept="audio/*" 
-                              style={{ display: 'none' }}
-                              onChange={(e) => setAudioFile(e.target.files[0])}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="form-group">
-                          <label>앨범 아트 / 이미지</label>
-                          <div className="file-upload-box" onClick={() => document.getElementById('cover-input').click()}>
-                            <UploadCloud className="icon" />
-                            <span style={{ fontSize: '13px' }}>
-                              {coverFile ? coverFile.name : '앨범 아트 선택 (선택 사항)'}
-                            </span>
-                            <input 
-                              type="file" 
-                              id="cover-input" 
-                              accept="image/*" 
-                              style={{ display: 'none' }}
-                              onChange={(e) => setCoverFile(e.target.files[0])}
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px' }}>
-                        <button 
-                          type="button" 
-                          className="btn-secondary"
-                          onClick={() => setIsAdminAuthenticated(false)}
-                        >
-                          인증 해제
-                        </button>
-                        <button 
-                          type="submit" 
-                          className="btn-primary-glow"
-                          disabled={isUploading}
-                        >
-                          {isUploading ? '업로드 중...' : '음원 등록하기'}
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                  )}
-
-                  {adminTab === 'members' && (
-                    <div className="admin-card">
-                      <h2 style={{ marginBottom: '24px', textAlign: 'left' }}>회원 권한 관리</h2>
-                      <div className="table-responsive">
-                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                          <thead>
-                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                              <th style={{ padding: '12px 8px', color: 'var(--text-secondary)' }}>이메일</th>
-                              <th style={{ padding: '12px 8px', color: 'var(--text-secondary)' }}>가입일</th>
-                              <th style={{ padding: '12px 8px', color: 'var(--text-secondary)' }}>현재 권한</th>
-                              <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', textAlign: 'right' }}>관리</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {memberList.map(member => (
-                              <tr key={member.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                <td style={{ padding: '16px 8px' }}>{member.email}</td>
-                                <td style={{ padding: '16px 8px', color: 'var(--text-secondary)', fontSize: '13px' }}>{new Date(member.created_at).toLocaleDateString()}</td>
-                                <td style={{ padding: '16px 8px' }}>
-                                  <span style={{ 
-                                    padding: '4px 8px', 
-                                    borderRadius: '4px', 
-                                    fontSize: '12px', 
-                                    background: member.role === 'admin' ? 'rgba(168, 85, 247, 0.2)' : 'rgba(255,255,255,0.1)',
-                                    color: member.role === 'admin' ? '#d8b4fe' : '#ccc'
-                                  }}>
-                                    {member.role === 'admin' ? '관리자' : '일반 유저'}
-                                  </span>
-                                </td>
-                                <td style={{ padding: '16px 8px', textAlign: 'right' }}>
-                                  <button 
-                                    className="btn-secondary" 
-                                    style={{ padding: '6px 12px', fontSize: '12px' }}
-                                    onClick={() => toggleMemberRole(member.id, member.role)}
-                                  >
-                                    {member.role === 'admin' ? '일반 강등' : '어드민 승격'}
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                            {memberList.length === 0 && (
-                              <tr>
-                                <td colSpan="4" style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>회원 목록을 불러오는 중이거나 없습니다.</td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-
-                  {adminTab === 'sync' && (
-                    <div className="admin-card">
-                      <h2 style={{ marginBottom: '24px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        🔄 음원 동기화 관리
-                      </h2>
-
-                      {/* 미동기화 상태 요약 */}
-                      {unsyncedData ? (
-                        <>
-                          {unsyncedData.unsyncedCount > 0 ? (
-                            <div className="sync-warning-banner">
-                              <div className="sync-warning-icon">⚠️</div>
-                              <div className="sync-warning-content">
-                                <strong>미동기화 음원 {unsyncedData.unsyncedCount}곡 감지됨</strong>
-                                <span>Supabase Storage에 파일이 남아 있어 트래픽이 소모되고 있습니다.</span>
-                                {unsyncedData.estimatedSizeMB > 0 && (
-                                  <span className="sync-warning-size">추정 용량: ~{unsyncedData.estimatedSizeMB}MB</span>
-                                )}
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="sync-ok-banner">
-                              <div className="sync-ok-icon">✅</div>
-                              <div className="sync-ok-content">
-                                <strong>모든 음원이 동기화되었습니다</strong>
-                                <span>총 {unsyncedData.totalCount}곡 — Supabase Storage 트래픽 소모 없음</span>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* 통계 카드 */}
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', margin: '20px 0' }}>
-                            <div className="sync-stat-card">
-                              <div className="sync-stat-number">{unsyncedData.totalCount}</div>
-                              <div className="sync-stat-label">전체 음원</div>
-                            </div>
-                            <div className="sync-stat-card sync-stat-ok">
-                              <div className="sync-stat-number">{unsyncedData.syncedCount}</div>
-                              <div className="sync-stat-label">동기화됨</div>
-                            </div>
-                            <div className={`sync-stat-card ${unsyncedData.unsyncedCount > 0 ? 'sync-stat-warn' : 'sync-stat-ok'}`}>
-                              <div className="sync-stat-number">{unsyncedData.unsyncedCount}</div>
-                              <div className="sync-stat-label">미동기화</div>
-                            </div>
-                          </div>
-
-                          {/* 미동기화 음원 목록 */}
-                          {unsyncedData.unsyncedCount > 0 && (
-                            <>
-                              <h3 style={{ margin: '24px 0 12px', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                ⚠️ 미동기화 음원 목록
-                              </h3>
-                              <div className="sync-song-table">
-                                <div className="sync-song-header">
-                                  <span>곡 제목</span>
-                                  <span>아티스트</span>
-                                  <span>등록일</span>
-                                  <span>상태</span>
-                                  <span>액션</span>
-                                </div>
-                                {unsyncedData.unsyncedSongs.map(song => {
-                                  // 오디오 파일명 추출
-                                  let audioFileName = null;
-                                  if (song.audioUnsynced && song.audio_url) {
-                                    const parts = song.audio_url.split('/storage/v1/object/public/songs/');
-                                    if (parts.length > 1) audioFileName = decodeURIComponent(parts[1]);
-                                  }
-                                  return (
-                                    <div key={song.id} className="sync-song-row">
-                                      <span className="sync-song-title">{song.title}</span>
-                                      <span className="sync-song-artist">{song.artist}</span>
-                                      <span className="sync-song-date">{new Date(song.created_at).toLocaleDateString()}</span>
-                                      <span>
-                                        <span className="sync-status-badge sync-status-unsynced">미동기화</span>
-                                      </span>
-                                      <span>
-                                        {audioFileName && (
-                                          <a
-                                            href={song.audio_url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="sync-download-btn"
-                                            title="음원 파일 다운로드"
-                                          >
-                                            📥 다운로드
-                                          </a>
-                                        )}
-                                      </span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-
-                              {/* 동기화 실행 버튼 */}
-                              <div style={{ display: 'flex', gap: '12px', marginTop: '20px', flexWrap: 'wrap' }}>
-                                <button
-                                  className="btn-primary-glow"
-                                  onClick={runSync}
-                                  disabled={isSyncing}
-                                  style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-                                >
-                                  {isSyncing ? (
-                                    <>
-                                      <RefreshCw size={16} className="sync-spin-icon" />
-                                      동기화 진행 중...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <RefreshCw size={16} />
-                                      전체 동기화 실행
-                                    </>
-                                  )}
-                                </button>
-                                <button
-                                  className="btn-secondary"
-                                  onClick={fetchUnsyncedSongs}
-                                  disabled={isSyncing}
-                                >
-                                  🔍 다시 검사
-                                </button>
-                              </div>
-                            </>
-                          )}
-
-                          {/* 동기화 진행 로그 */}
-                          {syncLogs.length > 0 && (
-                            <div className="sync-log-container">
-                              <h3 style={{ margin: '24px 0 12px', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                📋 동기화 로그
-                              </h3>
-                              <div className="sync-log-console" id="sync-log-console">
-                                {syncLogs.map((log, idx) => {
-                                  let logClass = 'sync-log-line';
-                                  if (log.type === 'error') logClass += ' sync-log-error';
-                                  else if (log.type === 'warning') logClass += ' sync-log-warning';
-                                  else if (log.type === 'success' || log.type === 'done') logClass += ' sync-log-success';
-                                  else if (log.type === 'step') logClass += ' sync-log-step';
-                                  else if (log.type === 'progress') logClass += ' sync-log-progress';
-
-                                  return (
-                                    <div key={idx} className={logClass}>
-                                      <span className="sync-log-time">{new Date(log.timestamp).toLocaleTimeString()}</span>
-                                      <span className="sync-log-msg">{log.message}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              {syncComplete && (
-                                <div className="sync-complete-banner">
-                                  🎉 동기화가 완료되었습니다!
-                                  <p style={{ fontSize: '12px', marginTop: '8px', opacity: 0.8 }}>
-                                    로컬에서 <code>sync.bat</code>을 실행하거나 git push를 진행하여 파일을 배포하세요.
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* 동기화된 음원 목록 (접기 가능) */}
-                          {unsyncedData.syncedCount > 0 && (
-                            <details style={{ marginTop: '24px' }}>
-                              <summary style={{ cursor: 'pointer', fontSize: '14px', color: 'var(--text-secondary)', padding: '8px 0' }}>
-                                ✅ 동기화된 음원 ({unsyncedData.syncedCount}곡) 보기
-                              </summary>
-                              <div className="sync-song-table" style={{ marginTop: '8px' }}>
-                                <div className="sync-song-header">
-                                  <span>곡 제목</span>
-                                  <span>아티스트</span>
-                                  <span>등록일</span>
-                                  <span>상태</span>
-                                  <span></span>
-                                </div>
-                                {unsyncedData.syncedSongs.map(song => (
-                                  <div key={song.id} className="sync-song-row">
-                                    <span className="sync-song-title">{song.title}</span>
-                                    <span className="sync-song-artist">{song.artist}</span>
-                                    <span className="sync-song-date">{new Date(song.created_at).toLocaleDateString()}</span>
-                                    <span>
-                                      <span className="sync-status-badge sync-status-synced">동기화됨</span>
-                                    </span>
-                                    <span></span>
-                                  </div>
-                                ))}
-                              </div>
-                            </details>
-                          )}
-                        </>
-                      ) : (
-                        <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                          <RefreshCw size={32} className="sync-spin-icon" style={{ marginBottom: '12px', opacity: 0.5 }} />
-                          <div>미동기화 음원을 검사하는 중...</div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-              </div>
+              <AdminWorkspace
+                isAuthenticated={isAdminAuthenticated}
+                adminPassword={adminPassword}
+                setAdminPassword={setAdminPassword}
+                onAuthenticate={handleAdminAuth}
+                onLock={() => {
+                  setIsAdminAuthenticated(false);
+                  setAdminPassword('');
+                }}
+                adminTab={adminTab}
+                setAdminTab={setAdminTab}
+                adminStats={adminStats}
+                adminVsStats={adminVsStats}
+                memberList={memberList}
+                fetchStats={fetchAdminStats}
+                fetchVsStats={fetchAdminVsStats}
+                fetchMembers={fetchMembers}
+                toggleMemberRole={toggleMemberRole}
+                unsyncedData={unsyncedData}
+                fetchUnsynced={fetchUnsyncedSongs}
+                runSync={runSync}
+                isSyncing={isSyncing}
+                syncLogs={syncLogs}
+                syncComplete={syncComplete}
+                apiBaseUrl={API_BASE_URL}
+                uploadProps={{
+                  title: uploadTitle,
+                  setTitle: setUploadTitle,
+                  artist: uploadArtist,
+                  setArtist: setUploadArtist,
+                  category: uploadCategory,
+                  setCategory: setUploadCategory,
+                  lyrics: uploadLyrics,
+                  setLyrics: setUploadLyrics,
+                  audioFile,
+                  setAudioFile,
+                  coverFile,
+                  setCoverFile,
+                  categories,
+                  isUploading,
+                  onSubmit: handleUploadSubmit
+                }}
+              />
             )}
 
-            
             {/* 노래 만들기 화면 */}
             {currentView === 'song-requests' && (
               <div className="board-container">

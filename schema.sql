@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS public.songs (
     category TEXT DEFAULT '일반',
     play_count INTEGER DEFAULT 0,
     likes_count INTEGER DEFAULT 0,
+    audio_size_bytes BIGINT DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -116,3 +117,98 @@ CREATE TABLE IF NOT EXISTS public.vs_votes (
     UNIQUE(match_id, session_id)
 );
 
+-- 5. 관리자 분석 데이터 수집
+
+ALTER TABLE public.playlists
+    ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
+
+ALTER TABLE public.likes
+    ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+
+ALTER TABLE public.vs_votes
+    ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
+
+ALTER TABLE public.vs_votes
+    ALTER COLUMN session_id DROP NOT NULL;
+
+CREATE TABLE IF NOT EXISTS public.play_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    session_id TEXT,
+    song_id UUID NOT NULL REFERENCES public.songs(id) ON DELETE CASCADE,
+    source TEXT,
+    delivery_source TEXT,
+    estimated_bytes BIGINT NOT NULL DEFAULT 0,
+    played_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.play_history
+    ALTER COLUMN user_id DROP NOT NULL;
+ALTER TABLE public.play_history
+    ADD COLUMN IF NOT EXISTS session_id TEXT;
+ALTER TABLE public.play_history
+    ADD COLUMN IF NOT EXISTS source TEXT;
+ALTER TABLE public.songs
+    ADD COLUMN IF NOT EXISTS audio_size_bytes BIGINT DEFAULT 0;
+ALTER TABLE public.play_history
+    ADD COLUMN IF NOT EXISTS delivery_source TEXT;
+ALTER TABLE public.play_history
+    ADD COLUMN IF NOT EXISTS estimated_bytes BIGINT NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS public.user_activity (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_type TEXT NOT NULL,
+    user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    session_id TEXT,
+    song_id UUID REFERENCES public.songs(id) ON DELETE SET NULL,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS playlists_user_id_idx
+    ON public.playlists (user_id);
+CREATE INDEX IF NOT EXISTS likes_user_id_created_at_idx
+    ON public.likes (user_id, created_at DESC)
+    WHERE user_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS likes_song_user_unique_idx
+    ON public.likes (song_id, user_id)
+    WHERE user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS vs_votes_user_id_created_at_idx
+    ON public.vs_votes (user_id, created_at DESC)
+    WHERE user_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS vs_votes_match_user_unique_idx
+    ON public.vs_votes (match_id, user_id)
+    WHERE user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS play_history_user_played_at_idx
+    ON public.play_history (user_id, played_at DESC)
+    WHERE user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS play_history_song_played_at_idx
+    ON public.play_history (song_id, played_at DESC);
+CREATE INDEX IF NOT EXISTS play_history_session_played_at_idx
+    ON public.play_history (session_id, played_at DESC)
+    WHERE session_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS user_activity_user_created_at_idx
+    ON public.user_activity (user_id, created_at DESC)
+    WHERE user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS user_activity_event_created_at_idx
+    ON public.user_activity (event_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS user_activity_song_created_at_idx
+    ON public.user_activity (song_id, created_at DESC)
+    WHERE song_id IS NOT NULL;
+
+ALTER TABLE public.play_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_activity ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON TABLE public.play_history FROM anon, authenticated;
+REVOKE ALL ON TABLE public.user_activity FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.play_history TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.user_activity TO service_role;
+
+DROP POLICY IF EXISTS "Service role manages play history" ON public.play_history;
+CREATE POLICY "Service role manages play history"
+    ON public.play_history FOR ALL TO service_role
+    USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Service role manages user activity" ON public.user_activity;
+CREATE POLICY "Service role manages user activity"
+    ON public.user_activity FOR ALL TO service_role
+    USING (true) WITH CHECK (true);

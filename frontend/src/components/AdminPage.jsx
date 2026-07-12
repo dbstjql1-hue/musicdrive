@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { Shield, ShieldAlert, Trash2, ArrowLeft } from 'lucide-react';
@@ -10,11 +10,22 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [currentUserProfile, setCurrentUserProfile] = useState(null);
 
-  useEffect(() => {
-    checkAdmin();
+  const fetchUsers = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching users:', error);
+    } else {
+      setUsers(data || []);
+    }
+    setLoading(false);
   }, []);
 
-  async function checkAdmin() {
+  const checkAdmin = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       navigate('/');
@@ -34,23 +45,14 @@ export default function AdminPage() {
     }
 
     setCurrentUserProfile(profile);
-    fetchUsers();
-  }
+    await fetchUsers();
+  }, [fetchUsers, navigate]);
 
-  async function fetchUsers() {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-      
-    if (error) {
-      console.error('Error fetching users:', error);
-    } else {
-      setUsers(data || []);
-    }
-    setLoading(false);
-  }
+  useEffect(() => {
+    // 관리자 권한 확인이 끝난 뒤 화면 데이터를 초기화합니다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    checkAdmin();
+  }, [checkAdmin]);
 
   async function toggleRole(userId, currentRole) {
     const newRole = currentRole === 'admin' ? 'user' : 'admin';

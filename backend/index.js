@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
+const fs = require('fs');
+const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
@@ -23,6 +25,18 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const safeNumber = (value) => Number.isFinite(value) ? value : 0;
 
+function isAdminRequest(req) {
+  const providedPassword = req.headers['x-admin-password'] || req.body?.adminPassword || req.query?.adminPassword;
+  const expectedPassword = process.env.ADMIN_PASSWORD || 'admin1234';
+  return providedPassword === expectedPassword;
+}
+
+function requireAdmin(req, res) {
+  if (isAdminRequest(req)) return true;
+  res.status(403).json({ error: '관리자 인증이 필요합니다.' });
+  return false;
+}
+
 function toDateKey(value) {
   return new Date(value).toISOString().slice(0, 10);
 }
@@ -44,9 +58,24 @@ function normalizeActivityType(type) {
   return String(type || 'unknown').toLowerCase().replace(/[^a-z0-9_:-]/g, '_').slice(0, 40);
 }
 
+function getStorageFileName(url, bucket) {
+  if (!url) return null;
+  const marker = `/storage/v1/object/public/${bucket}/`;
+  const [, encodedPath] = String(url).split(marker);
+  if (!encodedPath) return null;
+  return decodeURIComponent(encodedPath.split('?')[0]);
+}
+
+function getLocalAssetPath(bucket, fileName) {
+  if (!fileName) return null;
+  const baseDirectory = path.resolve(__dirname, '..', 'frontend', 'public', bucket);
+  const resolvedPath = path.resolve(baseDirectory, fileName);
+  return resolvedPath.startsWith(`${baseDirectory}${path.sep}`) ? resolvedPath : null;
+}
+
 async function recordActivity({ eventType, userId = null, sessionId = null, songId = null, metadata = {} }) {
   try {
-    await supabase
+    const { error } = await supabase
       .from('user_activity')
       .insert([{
         event_type: normalizeActivityType(eventType),
@@ -55,6 +84,7 @@ async function recordActivity({ eventType, userId = null, sessionId = null, song
         song_id: songId || null,
         metadata: metadata && typeof metadata === 'object' ? metadata : {}
       }]);
+    if (error) console.warn('[analytics] activity skipped:', error.message);
   } catch (err) {
     console.warn('[analytics] activity skipped:', err.message);
   }
@@ -75,6 +105,28 @@ async function safeFetch(label, queryPromise, fallback) {
     console.warn(`[analytics] ${label} skipped:`, err.message);
     return fallback;
   }
+}
+
+async function fetchPlayHistoryRows(limit = 5000) {
+  const detailed = await supabase
+    .from('play_history')
+    .select('id, user_id, session_id, song_id, source, delivery_source, estimated_bytes, played_at')
+    .order('played_at', { ascending: false })
+    .limit(limit);
+
+  if (!detailed.error) return detailed.data || [];
+
+  const fallback = await supabase
+    .from('play_history')
+    .select('id, user_id, session_id, song_id, source, played_at')
+    .order('played_at', { ascending: false })
+    .limit(limit);
+
+  if (fallback.error) {
+    console.warn('[analytics] play history skipped:', fallback.error.message);
+    return [];
+  }
+  return fallback.data || [];
 }
 
 // Multer 설정 (파일 업로드 메모리 저장소)
@@ -237,20 +289,27 @@ app.post('/api/songs', upload, async (req, res) => {
     }
 
     // 3) 데이터베이스 등록
-    const { data: newSong, error: dbErr } = await supabase
+    const songPayload = {
+      title,
+      artist,
+      audio_url: audioUrl,
+      cover_url: coverUrl,
+      lyrics: lyrics || '',
+      category: category || '일반',
+      audio_size_bytes: audioFile.size
+    };
+    let { data: newSong, error: dbErr } = await supabase
       .from('songs')
-      .insert([
-        {
-          title,
-          artist,
-          audio_url: audioUrl,
-          cover_url: coverUrl,
-          lyrics: lyrics || '',
-          category: category || '일반'
-        }
-      ])
+      .insert([songPayload])
       .select()
       .single();
+
+    if (dbErr && dbErr.message?.includes('audio_size_bytes')) {
+      const { audio_size_bytes, ...legacyPayload } = songPayload;
+      const legacyResult = await supabase.from('songs').insert([legacyPayload]).select().single();
+      newSong = legacyResult.data;
+      dbErr = legacyResult.error;
+    }
 
     if (dbErr) throw dbErr;
 
@@ -416,7 +475,7 @@ app.post('/api/songs/:id/play', async (req, res) => {
     // 먼저 현재 조회수 조회
     const { data: song, error: getErr } = await supabase
       .from('songs')
-      .select('play_count')
+      .select('play_count, audio_url')
       .eq('id', id)
       .single();
 
@@ -432,17 +491,29 @@ app.post('/api/songs/:id/play', async (req, res) => {
 
     if (updateErr) throw updateErr;
 
-    await supabase
+    const assetRows = await safeFetch(
+      'song asset size',
+      supabase.from('songs').select('audio_size_bytes').eq('id', id).maybeSingle(),
+      null
+    );
+    const deliverySource = song.audio_url?.includes('/storage/v1/object/') ? 'supabase_storage' : 'local_asset';
+    const playPayload = {
+      user_id: userId || null,
+      session_id: sessionId || null,
+      song_id: id,
+      source: source || 'player',
+      delivery_source: deliverySource,
+      estimated_bytes: deliverySource === 'supabase_storage' ? safeNumber(Number(assetRows?.audio_size_bytes)) : 0
+    };
+    let playHistoryResult = await supabase
       .from('play_history')
-      .insert([{
-        user_id: userId || null,
-        session_id: sessionId || null,
-        song_id: id,
-        source: source || 'player'
-      }])
-      .then(({ error }) => {
-        if (error) console.warn('[analytics] play history skipped:', error.message);
-      });
+      .insert([playPayload]);
+
+    if (playHistoryResult.error && /delivery_source|estimated_bytes/.test(playHistoryResult.error.message || '')) {
+      const { delivery_source, estimated_bytes, ...legacyPlayPayload } = playPayload;
+      playHistoryResult = await supabase.from('play_history').insert([legacyPlayPayload]);
+    }
+    if (playHistoryResult.error) console.warn('[analytics] play history skipped:', playHistoryResult.error.message);
 
     await recordActivity({
       eventType: 'play',
@@ -817,8 +888,8 @@ app.post('/api/vs-matches/:id/vote', async (req, res) => {
     const { id } = req.params;
     const { songId, userId } = req.body;
 
-    if (!songId || !sessionId) {
-      return res.status(400).json({ error: 'songId 및 sessionId는 필수입니다.' });
+    if (!songId || !userId) {
+      return res.status(400).json({ error: 'songId 및 userId는 필수입니다.' });
     }
 
     // 이미 투표했는지 확인
@@ -842,6 +913,7 @@ app.post('/api/vs-matches/:id/vote', async (req, res) => {
           .eq('user_id', userId);
 
         if (deleteErr) throw deleteErr;
+        await recordActivity({ eventType: 'vote_cancel', userId, songId, metadata: { matchId: id } });
         return res.json({ success: true, voted: false, songId: null });
       } else {
         // 다른 곡으로 투표 변경
@@ -854,6 +926,7 @@ app.post('/api/vs-matches/:id/vote', async (req, res) => {
           .single();
 
         if (updateErr) throw updateErr;
+        await recordActivity({ eventType: 'vote_change', userId, songId, metadata: { matchId: id } });
         return res.json({ success: true, voted: true, songId: updatedVote.song_id });
       }
     } else {
@@ -871,6 +944,7 @@ app.post('/api/vs-matches/:id/vote', async (req, res) => {
         .single();
 
       if (insertErr) throw insertErr;
+      await recordActivity({ eventType: 'vote', userId, songId, metadata: { matchId: id } });
       res.status(201).json({ success: true, voted: true, songId: newVote.song_id });
     }
   } catch (err) {
@@ -999,58 +1073,6 @@ app.get('/api/diagnose', async (req, res) => {
     res.status(500).json({ status: 'error', diagnosis });
   } else {
     res.json({ status: 'healthy', diagnosis });
-  }
-});
-
-// 12. 수파베이스 로컬 동기화 및 깃 푸시 API (POST /api/admin/sync)
-app.post('/api/admin/sync', async (req, res) => {
-  try {
-    const { adminPassword } = req.body;
-    const expectedPassword = process.env.ADMIN_PASSWORD || 'admin1234';
-
-    if (adminPassword !== expectedPassword) {
-      return res.status(403).json({ error: '관리자 인증 비밀번호가 일치하지 않습니다.' });
-    }
-
-    const { exec } = require('child_process');
-    const path = require('path');
-    const rootDir = path.join(__dirname, '..');
-
-    const runCmd = (cmd) => {
-      return new Promise((resolve, reject) => {
-        exec(cmd, { cwd: rootDir }, (error, stdout, stderr) => {
-          if (error) {
-            reject(error);
-          } else {
-            resolve(stdout);
-          }
-        });
-      });
-    };
-
-    console.log('[SYNC] Starting sync script execution via web dashboard...');
-    // A. sync_assets.js 스크립트 실행
-    await runCmd('node backend/sync_assets.js');
-    console.log('[SYNC] Sync assets script completed.');
-
-    // B. git status 확인하여 커밋할 항목이 있는지 체크
-    const statusOutput = await runCmd('git status --porcelain');
-    if (statusOutput.trim() === '') {
-      console.log('[SYNC] No changes to commit.');
-      return res.json({ success: true, message: '동기화 완료 (추가로 커밋할 파일 없음)' });
-    }
-
-    // C. 깃허브 스테이징, 커밋 및 푸시
-    console.log('[SYNC] Changes detected. Committing and pushing to git...');
-    await runCmd('git add .');
-    await runCmd(`git commit -m "sync: 수파베이스 음원 로컬 동기화 (Admin Web Dashboard)"`);
-    await runCmd('git push origin main');
-    console.log('[SYNC] Push to git completed successfully.');
-
-    res.json({ success: true, message: '동기화 및 깃허브 배포가 성공적으로 완료되었습니다.' });
-  } catch (err) {
-    console.error('동기화 처리 API 오류:', err.message || err);
-    res.status(500).json({ error: `동기화 실패: ${err.message || err}` });
   }
 });
 
@@ -1235,30 +1257,402 @@ app.get('/', (req, res) => {
 
 // 15. 어드민 통계 (GET /api/admin/stats)
 app.get('/api/admin/stats', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
   try {
-    const { count: totalUsers } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
-    const { count: totalSongs } = await supabase.from('songs').select('*', { count: 'exact', head: true });
-    const { data: topSongs } = await supabase.from('songs').select('id, title, artist, play_count').order('play_count', { ascending: false }).limit(5);
-    const { data: recentPlays } = await supabase
-      .from('play_history')
-      .select(`
-        id,
-        played_at,
-        profiles ( email ),
-        songs ( title, artist )
-      `)
-      .order('played_at', { ascending: false })
-      .limit(20);
+    const [totalUsersCount, totalSongsCount, profiles, songs, songAssetRows, storageFiles, plays, activities, likes, votes] = await Promise.all([
+      safeFetch('profile count', supabase.from('profiles').select('*', { count: 'exact', head: true }), 0),
+      safeFetch('song count', supabase.from('songs').select('*', { count: 'exact', head: true }), 0),
+      safeFetch('profiles', supabase.from('profiles').select('id, email, role, created_at').limit(5000), []),
+      safeFetch('songs', supabase.from('songs').select('id, title, artist, category, audio_url, play_count, likes_count').limit(5000), []),
+      safeFetch('song asset metadata', supabase.from('songs').select('id, audio_size_bytes').limit(5000), []),
+      safeFetch('storage files', supabase.storage.from('songs').list('', { limit: 1000, sortBy: { column: 'name', order: 'asc' } }), []),
+      fetchPlayHistoryRows(5000),
+      safeFetch('user activity', supabase.from('user_activity').select('id, event_type, user_id, session_id, song_id, metadata, created_at').order('created_at', { ascending: false }).limit(5000), []),
+      safeFetch('likes', supabase.from('likes').select('id, user_id, session_id, song_id, created_at').order('created_at', { ascending: false }).limit(5000), []),
+      safeFetch('votes', supabase.from('vs_votes').select('id, user_id, song_id, match_id, created_at').order('created_at', { ascending: false }).limit(5000), [])
+    ]);
+
+    const songById = Object.fromEntries(songs.map(song => [song.id, song]));
+    const profileById = Object.fromEntries(profiles.map(profile => [profile.id, profile]));
+    const storageSizeByName = Object.fromEntries(storageFiles.map(file => [file.name, safeNumber(Number(file.metadata?.size))]));
+    const assetSizeBySong = Object.fromEntries(songAssetRows.map(row => [row.id, safeNumber(Number(row.audio_size_bytes))]));
+    songs.forEach(song => {
+      if (assetSizeBySong[song.id]) return;
+      const fileName = getStorageFileName(song.audio_url, 'songs');
+      if (fileName && storageSizeByName[fileName]) assetSizeBySong[song.id] = storageSizeByName[fileName];
+    });
+    const dailyBuckets = makeRecentDayBuckets(14).map(day => ({ ...day, plays: 0, visits: 0, activities: 0, trafficBytes: 0, activeActors: new Set() }));
+    const dailyByDate = Object.fromEntries(dailyBuckets.map(day => [day.date, day]));
+    const userData = new Map();
+    const trafficBySong = {};
+    let supabasePlayStarts14d = 0;
+    let localPlayStarts14d = 0;
+
+    const getUserData = (userId) => {
+      if (!userId) return null;
+      if (!userData.has(userId)) {
+        userData.set(userId, {
+          plays: 0,
+          likes: 0,
+          votes: 0,
+          activities: 0,
+          songCounts: {},
+          categoryCounts: {},
+          activityCounts: {},
+          lastSeen: null
+        });
+      }
+      return userData.get(userId);
+    };
+
+    const updateLastSeen = (target, value) => {
+      if (!target || !value) return;
+      if (!target.lastSeen || new Date(value) > new Date(target.lastSeen)) target.lastSeen = value;
+    };
+
+    plays.forEach(play => {
+      const song = songById[play.song_id];
+      const actor = play.user_id || play.session_id;
+      const day = dailyByDate[toDateKey(play.played_at)];
+      if (day) {
+        day.plays += 1;
+        const deliverySource = play.delivery_source || (song?.audio_url?.includes('/storage/v1/object/') ? 'supabase_storage' : 'local_asset');
+        const estimatedBytes = deliverySource === 'supabase_storage'
+          ? safeNumber(Number(play.estimated_bytes)) || safeNumber(Number(assetSizeBySong[play.song_id]))
+          : 0;
+        day.trafficBytes += estimatedBytes;
+        if (deliverySource === 'supabase_storage') {
+          supabasePlayStarts14d += 1;
+          trafficBySong[play.song_id] = (trafficBySong[play.song_id] || 0) + estimatedBytes;
+        } else {
+          localPlayStarts14d += 1;
+        }
+        if (actor) day.activeActors.add(actor);
+      }
+
+      const target = getUserData(play.user_id);
+      if (!target) return;
+      target.plays += 1;
+      target.songCounts[play.song_id] = (target.songCounts[play.song_id] || 0) + 1;
+      if (song?.category) target.categoryCounts[song.category] = (target.categoryCounts[song.category] || 0) + 1;
+      updateLastSeen(target, play.played_at);
+    });
+
+    activities.forEach(activity => {
+      const actor = activity.user_id || activity.session_id;
+      const day = dailyByDate[toDateKey(activity.created_at)];
+      if (day) {
+        day.activities += 1;
+        if (activity.event_type === 'page_view') day.visits += 1;
+        if (actor) day.activeActors.add(actor);
+      }
+
+      const target = getUserData(activity.user_id);
+      if (!target) return;
+      target.activities += 1;
+      target.activityCounts[activity.event_type] = (target.activityCounts[activity.event_type] || 0) + 1;
+      updateLastSeen(target, activity.created_at);
+    });
+
+    likes.forEach(like => {
+      const target = getUserData(like.user_id);
+      if (!target) return;
+      target.likes += 1;
+      updateLastSeen(target, like.created_at);
+    });
+
+    votes.forEach(vote => {
+      const target = getUserData(vote.user_id);
+      if (!target) return;
+      target.votes += 1;
+      updateLastSeen(target, vote.created_at);
+    });
+
+    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    const recentActivities = activities.filter(item => new Date(item.created_at).getTime() >= sevenDaysAgo);
+    const recentPlays7d = plays.filter(item => new Date(item.played_at).getTime() >= sevenDaysAgo);
+    const activeUsers7d = new Set([
+      ...recentActivities.map(item => item.user_id || item.session_id),
+      ...recentPlays7d.map(item => item.user_id || item.session_id)
+    ].filter(Boolean)).size;
+
+    const topSongs = [...songs]
+      .sort((a, b) => safeNumber(Number(b.play_count)) - safeNumber(Number(a.play_count)))
+      .slice(0, 8)
+      .map(song => ({ ...song, play_count: safeNumber(Number(song.play_count)), likes_count: safeNumber(Number(song.likes_count)) }));
+
+    const categoryMap = {};
+    songs.forEach(song => {
+      const category = song.category || '기타';
+      categoryMap[category] = (categoryMap[category] || 0) + safeNumber(Number(song.play_count));
+    });
+
+    const categoryStats = Object.entries(categoryMap)
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+
+    const userInsights = profiles.map(profile => {
+      const target = userData.get(profile.id) || {
+        plays: 0,
+        likes: 0,
+        votes: 0,
+        activities: 0,
+        songCounts: {},
+        categoryCounts: {},
+        activityCounts: {},
+        lastSeen: null
+      };
+      const favoriteSongEntry = getTopEntry(target.songCounts);
+      const favoriteCategoryEntry = getTopEntry(target.categoryCounts);
+      const primaryActivityEntry = getTopEntry(target.activityCounts);
+
+      return {
+        id: profile.id,
+        email: profile.email,
+        role: profile.role,
+        createdAt: profile.created_at,
+        plays: target.plays,
+        likes: target.likes,
+        votes: target.votes,
+        activities: target.activities,
+        favoriteSong: favoriteSongEntry ? songById[favoriteSongEntry[0]] || null : null,
+        favoriteSongPlays: favoriteSongEntry?.[1] || 0,
+        favoriteCategory: favoriteCategoryEntry?.[0] || null,
+        primaryActivity: primaryActivityEntry?.[0] || null,
+        lastSeen: target.lastSeen
+      };
+    }).sort((a, b) => (b.plays + b.activities) - (a.plays + a.activities));
+
+    const totalPlays = songs.reduce((sum, song) => sum + safeNumber(Number(song.play_count)), 0);
+    const totalLikes = songs.reduce((sum, song) => sum + safeNumber(Number(song.likes_count)), 0);
+    const storageBytes = storageFiles.reduce((sum, file) => sum + safeNumber(Number(file.metadata?.size)), 0);
+    const estimatedEgress14dBytes = dailyBuckets.reduce((sum, day) => sum + day.trafficBytes, 0);
+    const deliveryStarts14d = supabasePlayStarts14d + localPlayStarts14d;
+    const topTrafficSongs = Object.entries(trafficBySong)
+      .map(([songId, bytes]) => ({
+        id: songId,
+        title: songById[songId]?.title || '삭제된 음원',
+        artist: songById[songId]?.artist || '',
+        bytes,
+        estimatedGb: bytes / (1024 ** 3)
+      }))
+      .sort((a, b) => b.bytes - a.bytes)
+      .slice(0, 8);
 
     res.json({
-      totalUsers: totalUsers || 0,
-      totalSongs: totalSongs || 0,
-      topSongs: topSongs || [],
-      recentPlays: recentPlays || []
+      generatedAt: new Date().toISOString(),
+      totalUsers: totalUsersCount || profiles.length,
+      totalSongs: totalSongsCount || songs.length,
+      totalPlays,
+      totalLikes,
+      activeUsers7d,
+      accessStats: {
+        visits7d: recentActivities.filter(item => item.event_type === 'page_view').length,
+        searches7d: recentActivities.filter(item => item.event_type === 'search').length,
+        uniqueSessions7d: new Set(recentActivities.map(item => item.session_id).filter(Boolean)).size
+      },
+      trafficStats: {
+        storageBytes,
+        storageGb: storageBytes / (1024 ** 3),
+        estimatedEgress14dBytes,
+        estimatedEgress14dGb: estimatedEgress14dBytes / (1024 ** 3),
+        supabasePlayStarts14d,
+        localPlayStarts14d,
+        localDeliveryRate: deliveryStarts14d > 0 ? (localPlayStarts14d / deliveryStarts14d) * 100 : 0,
+        topTrafficSongs,
+        estimateBasis: '재생 시작 횟수와 음원 파일 크기를 곱한 최대 전송량 추정치'
+      },
+      dailyActivity: dailyBuckets.map(day => ({
+        date: day.date,
+        label: day.label,
+        plays: day.plays,
+        visits: day.visits,
+        activities: day.activities,
+        trafficBytes: day.trafficBytes,
+        trafficMb: day.trafficBytes / (1024 ** 2),
+        activeUsers: day.activeActors.size
+      })),
+      topSongs,
+      categoryStats,
+      userInsights,
+      recentActivities: activities.slice(0, 30).map(activity => ({
+        ...activity,
+        profile: profileById[activity.user_id] || null,
+        song: songById[activity.song_id] || null
+      })),
+      recentPlays: plays.slice(0, 30).map(play => ({
+        ...play,
+        profile: profileById[play.user_id] || null,
+        song: songById[play.song_id] || null
+      })),
+      dataCoverage: {
+        playHistoryRows: plays.length,
+        activityRows: activities.length,
+        likeRows: likes.length,
+        voteRows: votes.length
+      }
     });
   } catch (err) {
     console.error('통계 조회 오류:', err.message);
     res.status(500).json({ error: '통계를 불러올 수 없습니다.' });
+  }
+});
+
+// 15.1. 어드민 투표 통계 (GET /api/admin/vs-stats)
+app.get('/api/admin/vs-stats', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  try {
+    const [matches, votes, songs, profiles] = await Promise.all([
+      safeFetch('vs matches', supabase.from('vs_matches').select('id, title, description, song1_id, song2_id, created_at').order('created_at', { ascending: false }).limit(1000), []),
+      safeFetch('vs votes', supabase.from('vs_votes').select('id, match_id, song_id, user_id, created_at').order('created_at', { ascending: false }).limit(5000), []),
+      safeFetch('vs songs', supabase.from('songs').select('id, title, artist, cover_url').limit(5000), []),
+      safeFetch('vs profiles', supabase.from('profiles').select('id, email').limit(5000), [])
+    ]);
+
+    const songById = Object.fromEntries(songs.map(song => [song.id, song]));
+    const profileById = Object.fromEntries(profiles.map(profile => [profile.id, profile]));
+    const matchById = Object.fromEntries(matches.map(match => [match.id, match]));
+    const votesByMatch = {};
+
+    votes.forEach(vote => {
+      if (!votesByMatch[vote.match_id]) votesByMatch[vote.match_id] = {};
+      votesByMatch[vote.match_id][vote.song_id] = (votesByMatch[vote.match_id][vote.song_id] || 0) + 1;
+    });
+
+    const matchStats = matches.map(match => {
+      const song1Votes = votesByMatch[match.id]?.[match.song1_id] || 0;
+      const song2Votes = votesByMatch[match.id]?.[match.song2_id] || 0;
+      return {
+        ...match,
+        song1: songById[match.song1_id] || null,
+        song2: songById[match.song2_id] || null,
+        song1Votes,
+        song2Votes,
+        totalVotes: song1Votes + song2Votes
+      };
+    });
+
+    res.json({
+      totalVotes: votes.length,
+      uniqueVoters: new Set(votes.map(vote => vote.user_id).filter(Boolean)).size,
+      matches: matchStats,
+      recentVotes: votes.slice(0, 50).map(vote => ({
+        ...vote,
+        profile: profileById[vote.user_id] || null,
+        song: songById[vote.song_id] || null,
+        match: matchById[vote.match_id] || null
+      }))
+    });
+  } catch (err) {
+    console.error('투표 통계 조회 오류:', err.message);
+    res.status(500).json({ error: '투표 통계를 불러올 수 없습니다.' });
+  }
+});
+
+// 15.2. 어드민 회원 관리
+app.get('/api/admin/members', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, email, role, created_at')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    console.error('회원 목록 조회 오류:', err.message);
+    res.status(500).json({ error: '회원 목록을 불러올 수 없습니다.' });
+  }
+});
+
+app.patch('/api/admin/members/:id/role', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  try {
+    const { role } = req.body;
+    if (!['user', 'admin'].includes(role)) {
+      return res.status(400).json({ error: '유효하지 않은 회원 권한입니다.' });
+    }
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ role })
+      .eq('id', req.params.id)
+      .select('id, email, role, created_at')
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error('회원 권한 변경 오류:', err.message);
+    res.status(500).json({ error: '회원 권한을 변경할 수 없습니다.' });
+  }
+});
+
+// 15.3. 사용자별 상세 청취 및 선호 분석
+app.get('/api/admin/users/:id/insights', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  try {
+    const userId = req.params.id;
+    const [profile, allPlays, activities, likes, votes, songs] = await Promise.all([
+      safeFetch('user profile', supabase.from('profiles').select('id, email, role, created_at').eq('id', userId).maybeSingle(), null),
+      fetchPlayHistoryRows(10000),
+      safeFetch('user activities', supabase.from('user_activity').select('id, event_type, song_id, metadata, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(500), []),
+      safeFetch('user likes', supabase.from('likes').select('id, song_id, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(1000), []),
+      safeFetch('user votes', supabase.from('vs_votes').select('id, match_id, song_id, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(1000), []),
+      safeFetch('insight songs', supabase.from('songs').select('id, title, artist, category, cover_url').limit(5000), [])
+    ]);
+
+    if (!profile) return res.status(404).json({ error: '회원을 찾을 수 없습니다.' });
+
+    const plays = allPlays.filter(play => play.user_id === userId);
+    const songById = Object.fromEntries(songs.map(song => [song.id, song]));
+    const likedSongIds = new Set(likes.map(like => like.song_id));
+    const songCounts = {};
+    const categoryCounts = {};
+
+    plays.forEach(play => {
+      const song = songById[play.song_id];
+      songCounts[play.song_id] = (songCounts[play.song_id] || 0) + 1;
+      if (song?.category) categoryCounts[song.category] = (categoryCounts[song.category] || 0) + 1;
+    });
+
+    const topSongs = Object.entries(songCounts)
+      .map(([songId, count]) => ({ ...songById[songId], id: songId, plays: count, liked: likedSongIds.has(songId) }))
+      .sort((a, b) => b.plays - a.plays)
+      .slice(0, 12);
+    const categoryStats = Object.entries(categoryCounts)
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count);
+    const timeline = [
+      ...plays.slice(0, 100).map(play => ({ id: `play-${play.id}`, type: 'play', song: songById[play.song_id] || null, created_at: play.played_at })),
+      ...activities.slice(0, 100).map(activity => ({ id: `activity-${activity.id}`, type: activity.event_type, song: songById[activity.song_id] || null, metadata: activity.metadata, created_at: activity.created_at })),
+      ...likes.slice(0, 50).map(like => ({ id: `like-${like.id}`, type: 'like', song: songById[like.song_id] || null, created_at: like.created_at })),
+      ...votes.slice(0, 50).map(vote => ({ id: `vote-${vote.id}`, type: 'vote', song: songById[vote.song_id] || null, created_at: vote.created_at }))
+    ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 60);
+
+    res.json({
+      profile,
+      summary: {
+        plays: plays.length,
+        likes: likes.length,
+        votes: votes.length,
+        activities: activities.length,
+        favoriteSong: topSongs[0] || null,
+        favoriteCategory: categoryStats[0]?.category || null,
+        lastSeen: timeline[0]?.created_at || null
+      },
+      topSongs,
+      categoryStats,
+      timeline
+    });
+  } catch (err) {
+    console.error('사용자 상세 분석 조회 오류:', err.message);
+    res.status(500).json({ error: '사용자 상세 분석을 불러올 수 없습니다.' });
   }
 });
 
@@ -1466,11 +1860,7 @@ app.delete('/api/song-requests/:id', async (req, res) => {
 // 1. 미동기화 음원 감지 (GET /api/admin/unsynced-songs)
 app.get('/api/admin/unsynced-songs', async (req, res) => {
   try {
-    const { adminPassword } = req.query;
-    const expectedPassword = process.env.ADMIN_PASSWORD || 'admin1234';
-    if (adminPassword !== expectedPassword) {
-      return res.status(403).json({ error: '관리자 인증이 필요합니다.' });
-    }
+    if (!requireAdmin(req, res)) return;
 
     // DB에서 전체 곡 조회
     const { data: songs, error } = await supabase
@@ -1485,14 +1875,25 @@ app.get('/api/admin/unsynced-songs', async (req, res) => {
     const syncedSongs = [];
 
     for (const song of songs) {
-      const audioUnsynced = song.audio_url && song.audio_url.includes('supabase.co');
-      const coverUnsynced = song.cover_url && song.cover_url.includes('supabase.co') && !song.cover_url.includes('unsplash.com');
+      const audioFileName = getStorageFileName(song.audio_url, 'songs');
+      const coverFileName = getStorageFileName(song.cover_url, 'covers');
+      const audioUnsynced = Boolean(audioFileName);
+      const coverUnsynced = Boolean(coverFileName);
+      const localAudioPath = getLocalAssetPath('songs', audioFileName);
+      const localCoverPath = getLocalAssetPath('covers', coverFileName);
+      const localAudioReady = !audioUnsynced || Boolean(localAudioPath && fs.existsSync(localAudioPath));
+      const localCoverReady = !coverUnsynced || Boolean(localCoverPath && fs.existsSync(localCoverPath));
 
       if (audioUnsynced || coverUnsynced) {
         unsyncedSongs.push({
           ...song,
           audioUnsynced,
-          coverUnsynced
+          coverUnsynced,
+          audioFileName,
+          coverFileName,
+          localAudioReady,
+          localCoverReady,
+          readyToApply: localAudioReady && localCoverReady
         });
       } else {
         syncedSongs.push(song);
@@ -1512,6 +1913,7 @@ app.get('/api/admin/unsynced-songs', async (req, res) => {
 
     res.json({
       unsyncedCount: unsyncedSongs.length,
+      readyCount: unsyncedSongs.filter(song => song.readyToApply).length,
       syncedCount: syncedSongs.length,
       totalCount: songs.length,
       estimatedSizeMB: Math.round(estimatedSizeMB * 10) / 10,
@@ -1527,11 +1929,7 @@ app.get('/api/admin/unsynced-songs', async (req, res) => {
 // 2. 동기화 실행 - SSE 스트리밍 (POST /api/admin/sync)
 app.post('/api/admin/sync', async (req, res) => {
   try {
-    const { adminPassword } = req.body;
-    const expectedPassword = process.env.ADMIN_PASSWORD || 'admin1234';
-    if (adminPassword !== expectedPassword) {
-      return res.status(403).json({ error: '관리자 인증이 필요합니다.' });
-    }
+    if (!requireAdmin(req, res)) return;
 
     // SSE 헤더 설정
     res.writeHead(200, {
@@ -1546,7 +1944,7 @@ app.post('/api/admin/sync', async (req, res) => {
       res.write(`data: ${event}\n\n`);
     };
 
-    sendEvent('start', '🔄 동기화 프로세스를 시작합니다...');
+    sendEvent('start', '동기화 검증을 시작합니다.');
 
     // DB에서 미동기화 곡 조회
     const { data: songs, error: fetchErr } = await supabase
@@ -1554,21 +1952,20 @@ app.post('/api/admin/sync', async (req, res) => {
       .select('*');
 
     if (fetchErr) {
-      sendEvent('error', `❌ 데이터베이스 조회 실패: ${fetchErr.message}`);
+      sendEvent('error', `데이터베이스 조회 실패: ${fetchErr.message}`);
       sendEvent('done', '동기화가 실패로 종료되었습니다.', { success: false });
       res.end();
       return;
     }
 
-    const unsyncedSongs = songs.filter(s =>
-      (s.audio_url && s.audio_url.includes('supabase.co')) ||
-      (s.cover_url && s.cover_url.includes('supabase.co') && !s.cover_url.includes('unsplash.com'))
+    const unsyncedSongs = songs.filter(song =>
+      getStorageFileName(song.audio_url, 'songs') || getStorageFileName(song.cover_url, 'covers')
     );
 
-    sendEvent('info', `📋 총 ${unsyncedSongs.length}곡의 미동기화 음원을 발견했습니다.`);
+    sendEvent('info', `총 ${unsyncedSongs.length}곡의 전환 대상을 발견했습니다.`);
 
     if (unsyncedSongs.length === 0) {
-      sendEvent('done', '✅ 모든 음원이 이미 동기화된 상태입니다.', { success: true, syncCount: 0 });
+      sendEvent('done', '모든 음원이 이미 동기화된 상태입니다.', { success: true, syncCount: 0, failCount: 0 });
       res.end();
       return;
     }
@@ -1578,34 +1975,36 @@ app.post('/api/admin/sync', async (req, res) => {
 
     for (let i = 0; i < unsyncedSongs.length; i++) {
       const song = unsyncedSongs[i];
-      sendEvent('progress', `🔄 [${i + 1}/${unsyncedSongs.length}] "${song.title}" 처리 중...`, { current: i + 1, total: unsyncedSongs.length, songTitle: song.title });
+      sendEvent('progress', `[${i + 1}/${unsyncedSongs.length}] "${song.title}" 검증 중`, { current: i + 1, total: unsyncedSongs.length, songTitle: song.title });
 
       try {
         let newAudioUrl = song.audio_url;
         let newCoverUrl = song.cover_url;
-        let audioPathInBucket = null;
-        let coverPathInBucket = null;
+        const audioPathInBucket = getStorageFileName(song.audio_url, 'songs');
+        const coverPathInBucket = getStorageFileName(song.cover_url, 'covers');
+        const localAudioPath = getLocalAssetPath('songs', audioPathInBucket);
+        const localCoverPath = getLocalAssetPath('covers', coverPathInBucket);
+        const missingAssets = [];
+
+        if (audioPathInBucket && (!localAudioPath || !fs.existsSync(localAudioPath))) missingAssets.push(`songs/${audioPathInBucket}`);
+        if (coverPathInBucket && (!localCoverPath || !fs.existsSync(localCoverPath))) missingAssets.push(`covers/${coverPathInBucket}`);
+
+        if (missingAssets.length > 0) {
+          sendEvent('warning', `[${song.title}] 로컬 파일이 없어 DB 전환을 건너뜁니다.`, { missingAssets });
+          failCount += 1;
+          continue;
+        }
 
         // 오디오 URL 처리
-        if (song.audio_url && song.audio_url.includes('/storage/v1/object/public/songs/')) {
-          const parts = song.audio_url.split('/storage/v1/object/public/songs/');
-          if (parts.length > 1) {
-            const fileName = decodeURIComponent(parts[1]);
-            newAudioUrl = `/songs/${fileName}`;
-            audioPathInBucket = fileName;
-            sendEvent('step', `  📁 오디오 URL 변환: ${fileName}`);
-          }
+        if (audioPathInBucket) {
+          newAudioUrl = `/songs/${audioPathInBucket}`;
+          sendEvent('step', `오디오 로컬 파일 확인: ${audioPathInBucket}`);
         }
 
         // 커버 URL 처리
-        if (song.cover_url && song.cover_url.includes('/storage/v1/object/public/covers/') && !song.cover_url.includes('unsplash.com')) {
-          const parts = song.cover_url.split('/storage/v1/object/public/covers/');
-          if (parts.length > 1) {
-            const fileName = decodeURIComponent(parts[1]);
-            newCoverUrl = `/covers/${fileName}`;
-            coverPathInBucket = fileName;
-            sendEvent('step', `  🖼️ 커버 URL 변환: ${fileName}`);
-          }
+        if (coverPathInBucket) {
+          newCoverUrl = `/covers/${coverPathInBucket}`;
+          sendEvent('step', `커버 로컬 파일 확인: ${coverPathInBucket}`);
         }
 
         // DB 업데이트
@@ -1618,56 +2017,50 @@ app.post('/api/admin/sync', async (req, res) => {
           .eq('id', song.id);
 
         if (updateErr) {
-          sendEvent('error', `  ❌ [${song.title}] DB 업데이트 실패: ${updateErr.message}`);
+          sendEvent('error', `[${song.title}] DB 업데이트 실패: ${updateErr.message}`);
           failCount++;
           continue;
         }
-        sendEvent('step', `  ✅ [${song.title}] DB URL 업데이트 완료`);
+        sendEvent('step', `[${song.title}] DB URL 업데이트 완료`);
 
         // Supabase Storage 파일 삭제
         if (audioPathInBucket) {
           const { error: delErr } = await supabase.storage.from('songs').remove([audioPathInBucket]);
           if (delErr) {
-            sendEvent('warning', `  ⚠️ [${song.title}] 오디오 Storage 삭제 실패: ${delErr.message}`);
+            sendEvent('warning', `[${song.title}] 오디오 Storage 삭제 실패: ${delErr.message}`);
           } else {
-            sendEvent('step', `  🗑️ [${song.title}] 오디오 Storage 파일 삭제 완료`);
+            sendEvent('step', `[${song.title}] 오디오 Storage 원본 정리 완료`);
           }
         }
 
         if (coverPathInBucket) {
           const { error: delErr } = await supabase.storage.from('covers').remove([coverPathInBucket]);
           if (delErr) {
-            sendEvent('warning', `  ⚠️ [${song.title}] 커버 Storage 삭제 실패: ${delErr.message}`);
+            sendEvent('warning', `[${song.title}] 커버 Storage 삭제 실패: ${delErr.message}`);
           } else {
-            sendEvent('step', `  🗑️ [${song.title}] 커버 Storage 파일 삭제 완료`);
+            sendEvent('step', `[${song.title}] 커버 Storage 원본 정리 완료`);
           }
         }
 
         syncCount++;
-        sendEvent('success', `  ✅ [${song.title}] 동기화 완료!`);
+        sendEvent('success', `[${song.title}] 동기화 완료`);
       } catch (songErr) {
-        sendEvent('error', `  ❌ [${song.title}] 처리 중 오류: ${songErr.message}`);
+        sendEvent('error', `[${song.title}] 처리 중 오류: ${songErr.message}`);
         failCount++;
       }
     }
 
-    sendEvent('done', `🎉 동기화 완료! 성공: ${syncCount}곡, 실패: ${failCount}곡`, {
-      success: true,
+    sendEvent('done', `동기화 검증 완료: 반영 ${syncCount}곡, 준비 필요 ${failCount}곡`, {
+      success: failCount === 0,
       syncCount,
       failCount
     });
-
-    // 중요 안내
-    if (syncCount > 0) {
-      sendEvent('info', '⚠️ 중요: 음원 파일이 아직 로컬 frontend/public/songs/ 폴더에 없을 수 있습니다.');
-      sendEvent('info', '📌 로컬에서 sync.bat을 실행하거나, 아래 다운로드 버튼으로 파일을 받아 frontend/public/songs/ 에 저장 후 git push 해주세요.');
-    }
 
     res.end();
   } catch (err) {
     console.error('동기화 오류:', err);
     try {
-      const event = JSON.stringify({ type: 'error', message: `❌ 동기화 처리 중 예기치 못한 오류: ${err.message}` });
+      const event = JSON.stringify({ type: 'error', message: `동기화 처리 중 예기치 못한 오류: ${err.message}`, timestamp: new Date().toISOString() });
       res.write(`data: ${event}\n\n`);
       res.end();
     } catch (e) {
@@ -1679,11 +2072,7 @@ app.post('/api/admin/sync', async (req, res) => {
 // 3. 개별 음원 파일 프록시 다운로드 (GET /api/admin/download-song/:bucket/:filename)
 app.get('/api/admin/download-song/:bucket/:filename', async (req, res) => {
   try {
-    const { adminPassword } = req.query;
-    const expectedPassword = process.env.ADMIN_PASSWORD || 'admin1234';
-    if (adminPassword !== expectedPassword) {
-      return res.status(403).json({ error: '관리자 인증이 필요합니다.' });
-    }
+    if (!requireAdmin(req, res)) return;
 
     const { bucket, filename } = req.params;
     const decodedFilename = decodeURIComponent(filename);
