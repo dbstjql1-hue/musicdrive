@@ -39,6 +39,7 @@ import {
 import { PoemAnimation } from './components/ui/3d-animation';
 import './App.css';
 import mascotImg from './assets/mascot.png';
+import { supabase } from './supabaseClient';
 
 // API Base URL (Vercel 배포 시 환경 변수 설정 권장)
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/+$/, '');
@@ -167,20 +168,46 @@ function MainApp() {
   // Toast UI
   const [toastMessage, setToastMessage] = useState('');
 
-  // Supabase Auth (정적 모드 전환으로 인한 기능 제거)
+  // Supabase Auth (하이브리드 모드 - Auth 기능 복구)
   useEffect(() => {
-    // Auth 로직 무효화
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUserSession(session);
+      if (session) fetchUserProfile(session.user.id);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserSession(session);
+      if (session) {
+        fetchUserProfile(session.user.id);
+      } else {
+        setUserProfile(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const fetchUserProfile = async (userId) => {
-    // 프로필 로딩 로직 무효화
+    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    if (data) setUserProfile(data);
   };
 
   const handleGoogleLogin = async () => {
-    showToast('정적 모드에서는 로그인 기능을 지원하지 않습니다.');
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      if (error) throw error;
+    } catch (err) {
+      showToast('로그인 중 오류가 발생했습니다: ' + err.message);
+    }
   };
 
   const handleLogout = async () => {
+    await supabase.auth.signOut();
     setUserSession(null);
     setUserProfile(null);
   };
