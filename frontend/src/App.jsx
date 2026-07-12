@@ -116,7 +116,8 @@ function MainApp() {
   const [audioFile, setAudioFile] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [adminTab, setAdminTab] = useState('upload'); // 'upload', 'members'
+  const [adminTab, setAdminTab] = useState('dashboard'); // 'dashboard', 'upload', 'members'
+  const [adminStats, setAdminStats] = useState(null);
   const [memberList, setMemberList] = useState([]);
   
   // Fullscreen Modal Player States
@@ -1280,6 +1281,18 @@ function MainApp() {
     }
   };
 
+  const fetchAdminStats = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/stats`);
+      if (res.ok) {
+        const data = await res.json();
+        setAdminStats(data);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const fetchMembers = async () => {
     const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
     if (data) setMemberList(data);
@@ -2264,8 +2277,70 @@ function MainApp() {
                 ) : (
                   <>
                     <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '16px' }}>
+                      <button className={adminTab === 'dashboard' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => { setAdminTab('dashboard'); fetchAdminStats(); }}>대시보드</button>
                       <button className={adminTab === 'upload' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => setAdminTab('upload')}>음원 등록</button>
                       <button className={adminTab === 'members' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => { setAdminTab('members'); fetchMembers(); }}>회원 관리</button>
+                    </div>
+
+                    {adminTab === 'dashboard' && (
+                      <div className="admin-card">
+                        <h2 style={{ marginBottom: '24px', textAlign: 'left' }}>통계 대시보드</h2>
+                        {!adminStats ? (
+                          <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>통계 데이터를 불러오는 중...</div>
+                        ) : (
+                          <>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '32px' }}>
+                              <div style={{ background: 'rgba(255,255,255,0.05)', padding: '24px', borderRadius: '12px', textAlign: 'center' }}>
+                                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>총 가입 회원</div>
+                                <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{adminStats.totalUsers}명</div>
+                              </div>
+                              <div style={{ background: 'rgba(255,255,255,0.05)', padding: '24px', borderRadius: '12px', textAlign: 'center' }}>
+                                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>총 등록 음원</div>
+                                <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{adminStats.totalSongs}곡</div>
+                              </div>
+                            </div>
+
+                            <h3 style={{ marginBottom: '16px', fontSize: '16px' }}>인기 음원 TOP 5</h3>
+                            <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '16px', marginBottom: '32px' }}>
+                              {adminStats.topSongs.map((song, idx) => (
+                                <div key={song.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: idx < adminStats.topSongs.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
+                                  <span style={{ color: 'var(--text-primary)' }}>{idx + 1}. {song.title} - <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>{song.artist}</span></span>
+                                  <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>{song.play_count}회</span>
+                                </div>
+                              ))}
+                            </div>
+
+                            <h3 style={{ marginBottom: '16px', fontSize: '16px' }}>최근 재생 활동 (실시간)</h3>
+                            <div className="table-responsive">
+                              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                                <thead>
+                                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                    <th style={{ padding: '8px', color: 'var(--text-secondary)' }}>유저 이메일</th>
+                                    <th style={{ padding: '8px', color: 'var(--text-secondary)' }}>재생한 노래</th>
+                                    <th style={{ padding: '8px', color: 'var(--text-secondary)' }}>재생 일시</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {adminStats.recentPlays.map(play => (
+                                    <tr key={play.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                      <td style={{ padding: '8px' }}>{play.profiles?.email || '알 수 없음'}</td>
+                                      <td style={{ padding: '8px' }}>{play.songs?.title} - {play.songs?.artist}</td>
+                                      <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{new Date(play.played_at).toLocaleString()}</td>
+                                    </tr>
+                                  ))}
+                                  {adminStats.recentPlays.length === 0 && (
+                                    <tr>
+                                      <td colSpan="3" style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)' }}>재생 이력이 없습니다.</td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    <div style={{ display: 'none' }}>
                     </div>
 
                     {adminTab === 'upload' && (
