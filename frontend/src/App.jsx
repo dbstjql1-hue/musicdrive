@@ -2771,37 +2771,77 @@ function MainApp() {
                       </div>
                     </div>
                     
-                    <div className="board-list">
-                      <div className="board-header">
-                        <div className="b-col-id">번호</div>
-                        <div className="b-col-title">제목</div>
-                        <div className="b-col-author">작성자</div>
-                        <div className="b-col-date">작성일</div>
-                      </div>
-                      
+                    <div className="requests-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px', marginTop: '32px', paddingBottom: '40px' }}>
                       {songRequests.length === 0 ? (
-                        <div className="empty-state">
-                          <Music size={48} opacity={0.3} />
-                          <p>첫 번째 노래 만들기 요청을 남겨보세요!</p>
+                        <div className="empty-state" style={{ gridColumn: '1 / -1', padding: '60px', background: 'rgba(25, 25, 35, 0.4)', borderRadius: '24px', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                          <Music size={48} opacity={0.3} style={{ marginBottom: '16px' }} />
+                          <p style={{ fontSize: '16px', color: 'var(--text-secondary)' }}>첫 번째 노래 만들기 요청을 남겨보세요!</p>
                         </div>
                       ) : (
-                        songRequests.map((req, idx) => (
-                          <div 
-                            className="board-row" 
-                            key={req.id}
-                            onClick={() => fetchSongRequestDetail(req.id)}
-                          >
-                            <div className="b-col-id">{songRequests.length - idx}</div>
-                            <div className="b-col-title">
-                              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <Lock size={14} style={{ color: 'var(--text-secondary)' }} />
+                        songRequests.map((req, idx) => {
+                          const requestNumber = songRequests.length - idx;
+                          return (
+                            <div 
+                              className="request-card" 
+                              key={req.id}
+                              onClick={() => fetchSongRequestDetail(req.id)}
+                              style={{
+                                background: 'rgba(25, 25, 35, 0.6)',
+                                backdropFilter: 'blur(16px)',
+                                border: '1px solid rgba(255, 255, 255, 0.05)',
+                                borderRadius: '20px',
+                                padding: '24px',
+                                cursor: 'pointer',
+                                transition: 'all 0.3s ease',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '12px',
+                                animation: `fadeUp 0.4s ease ${idx * 0.05}s both`
+                              }}
+                              onMouseEnter={e => {
+                                e.currentTarget.style.transform = 'translateY(-4px)';
+                                e.currentTarget.style.borderColor = 'var(--primary-color)';
+                                e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.4)';
+                              }}
+                              onMouseLeave={e => {
+                                e.currentTarget.style.transform = 'translateY(0)';
+                                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.05)';
+                                e.currentTarget.style.boxShadow = 'none';
+                              }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ 
+                                  fontSize: '13px', 
+                                  fontWeight: '700', 
+                                  background: 'linear-gradient(135deg, var(--primary-color), #8a2be2)', 
+                                  color: '#fff', 
+                                  padding: '6px 14px', 
+                                  borderRadius: '20px',
+                                  letterSpacing: '0.5px',
+                                  boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                                }}>
+                                  ✨ ${requestNumber}번째 노래 요청
+                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(0,0,0,0.3)', padding: '6px 12px', borderRadius: '20px' }}>
+                                  <Lock size={12} style={{ color: 'var(--text-secondary)' }} />
+                                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>비밀글</span>
+                                </div>
+                              </div>
+                              <h3 style={{ fontSize: '19px', fontWeight: '600', color: '#fff', margin: '16px 0', lineHeight: '1.5', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                                 {req.title}
-                              </span>
+                              </h3>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <div style={{ background: 'rgba(255,255,255,0.1)', padding: '4px', borderRadius: '50%' }}>
+                                    <User size={12} />
+                                  </div>
+                                  {req.profiles?.email?.split('@')[0] || '익명'}
+                                </span>
+                                <span>{new Date(req.created_at).toLocaleDateString()}</span>
+                              </div>
                             </div>
-                            <div className="b-col-author">{req.profiles?.email?.split('@')[0] || '익명'}</div>
-                            <div className="b-col-date">{new Date(req.created_at).toLocaleDateString()}</div>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                   </>
