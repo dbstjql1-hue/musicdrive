@@ -32,14 +32,23 @@ import {
   MessageCircle,
   Eye,
   User,
+  Users,
   LogIn,
   LogOut,
-  Settings
+  Settings,
+  Activity,
+  BarChart3,
+  Headphones,
+  RefreshCw,
+  ShieldCheck,
+  TrendingUp,
+  Vote
 } from 'lucide-react';
 import { PoemAnimation } from './components/ui/3d-animation';
 import './App.css';
 import mascotImg from './assets/mascot.png';
 import { supabase } from './supabaseClient';
+import { trackActivity } from './analytics';
 
 // API Base URL (Vercel 배포 시 환경 변수 설정 권장)
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/+$/, '');
@@ -240,6 +249,10 @@ function MainApp() {
   };
 
   const handleLogout = async () => {
+    trackActivity('logout', {
+      userId: userSession?.user?.id,
+      sessionId
+    });
     await supabase.auth.signOut();
     setUserSession(null);
     setUserProfile(null);
@@ -267,6 +280,14 @@ function MainApp() {
       setIsPlaylistDrawerOpen(false);
     }, 400);
   };
+
+  useEffect(() => {
+    trackActivity('page_view', {
+      userId: userSession?.user?.id,
+      sessionId,
+      metadata: { view: currentView }
+    });
+  }, [currentView, userSession?.user?.id]);
 
 
 
@@ -697,6 +718,12 @@ function MainApp() {
 
       if (res.ok) {
         showToast('투표가 반영되었습니다!');
+        trackActivity('vote', {
+          userId: userSession?.user?.id,
+          sessionId,
+          songId,
+          metadata: { matchId }
+        });
         fetchVSMatches();
       } else {
         const data = await res.json();
@@ -1018,6 +1045,11 @@ function MainApp() {
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
+    trackActivity('search', {
+      userId: userSession?.user?.id,
+      sessionId,
+      metadata: { query: searchQuery, category: selectedCategory }
+    });
     fetchSongs(searchQuery, selectedCategory);
   };
 
@@ -1055,11 +1087,30 @@ function MainApp() {
   // 4. API 인터랙션 함수들
   const incrementPlayCount = useCallback(async (songId) => {
     try {
-      fetch(`${API_BASE_URL}/api/songs/${songId}/play`, { method: 'POST' });
+      const res = await fetch(`${API_BASE_URL}/api/songs/${songId}/play`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: userSession?.user?.id,
+          sessionId,
+          source: currentView
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data.play_count === 'number') {
+          setSongs(prevSongs => prevSongs.map(song => (
+            song.id === songId ? { ...song, play_count: data.play_count } : song
+          )));
+          setActiveSong(prevSong => (
+            prevSong?.id === songId ? { ...prevSong, play_count: data.play_count } : prevSong
+          ));
+        }
+      }
     } catch (err) {
       console.error(err);
     }
-  }, []);
+  }, [currentView, userSession?.user?.id]);
 
   // 3. 재생기 제어 함수들
   const playSingleSong = (song) => {
@@ -1187,7 +1238,7 @@ function MainApp() {
       const res = await fetch(`${API_BASE_URL}/api/songs/${songId}/like`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId })
+        body: JSON.stringify({ sessionId, userId: userSession?.user?.id })
       });
       if (res.ok) {
         const data = await res.json();
@@ -1222,6 +1273,11 @@ function MainApp() {
       });
       if (res.ok) {
         showToast(`플레이리스트 '${newPlaylistName}'이(가) 생성되었습니다.`);
+        trackActivity('playlist_create', {
+          userId: userSession?.user?.id,
+          sessionId,
+          metadata: { name: newPlaylistName }
+        });
         setNewPlaylistName('');
         setNewPlaylistDesc('');
         setIsPlaylistModalOpen(false);
@@ -1249,11 +1305,17 @@ function MainApp() {
       const res = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/songs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ songId })
+        body: JSON.stringify({ songId, userId: userSession?.user?.id })
       });
       const data = await res.json();
       if (res.ok) {
         showToast('플레이리스트에 곡이 추가되었습니다.');
+        trackActivity('playlist_add', {
+          userId: userSession?.user?.id,
+          sessionId,
+          songId,
+          metadata: { playlistId }
+        });
       } else {
         showToast(data.error || '추가할 수 없습니다.');
       }
@@ -1271,6 +1333,12 @@ function MainApp() {
       });
       if (res.ok) {
         showToast('플레이리스트에서 곡을 제거했습니다.');
+        trackActivity('playlist_remove', {
+          userId: userSession?.user?.id,
+          sessionId,
+          songId,
+          metadata: { playlistId }
+        });
         // 상세 보기 새로고침
         if (selectedPlaylist && selectedPlaylist.id === playlistId) {
           const updatedSongs = selectedPlaylist.songs.filter(s => s.id !== songId);
@@ -1284,13 +1352,17 @@ function MainApp() {
 
   const fetchAdminStats = async () => {
     try {
+      setAdminStats(null);
       const res = await fetch(`${API_BASE_URL}/api/admin/stats`);
       if (res.ok) {
         const data = await res.json();
         setAdminStats(data);
+      } else {
+        showToast('대시보드 통계를 불러오지 못했습니다.');
       }
     } catch (err) {
       console.error(err);
+      showToast('대시보드 통계를 불러오지 못했습니다.');
     }
   };
 
@@ -1298,19 +1370,27 @@ function MainApp() {
 
   const fetchAdminVsStats = async () => {
     try {
+      setAdminVsStats(null);
       const res = await fetch(`${API_BASE_URL}/api/admin/vs-stats`);
       if (res.ok) {
         const data = await res.json();
         setAdminVsStats(data);
+      } else {
+        showToast('투표 통계를 불러오지 못했습니다.');
       }
     } catch (err) {
       console.error(err);
+      showToast('투표 통계를 불러오지 못했습니다.');
     }
   };
 
   const fetchMembers = async () => {
     const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
     if (data) setMemberList(data);
+    if (error) {
+      console.error(error);
+      showToast('회원 목록을 불러오지 못했습니다.');
+    }
   };
 
   const toggleMemberRole = async (memberId, currentRole) => {
@@ -1344,6 +1424,9 @@ function MainApp() {
       const data = await res.json();
       if (res.ok) {
         setIsAdminAuthenticated(true);
+        fetchAdminStats();
+        fetchAdminVsStats();
+        fetchMembers();
         showToast('관리자 인증에 성공했습니다.');
       } else {
         showToast(data.error || '비밀번호가 올바르지 않습니다.');

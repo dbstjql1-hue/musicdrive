@@ -21,6 +21,62 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+const safeNumber = (value) => Number.isFinite(value) ? value : 0;
+
+function toDateKey(value) {
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function makeRecentDayBuckets(days = 7) {
+  return Array.from({ length: days }).map((_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (days - 1 - index));
+    const key = date.toISOString().slice(0, 10);
+    return { date: key, label: `${date.getMonth() + 1}/${date.getDate()}`, count: 0 };
+  });
+}
+
+function getTopEntry(map) {
+  return Object.entries(map).sort((a, b) => b[1] - a[1])[0] || null;
+}
+
+function normalizeActivityType(type) {
+  return String(type || 'unknown').toLowerCase().replace(/[^a-z0-9_:-]/g, '_').slice(0, 40);
+}
+
+async function recordActivity({ eventType, userId = null, sessionId = null, songId = null, metadata = {} }) {
+  try {
+    await supabase
+      .from('user_activity')
+      .insert([{
+        event_type: normalizeActivityType(eventType),
+        user_id: userId || null,
+        session_id: sessionId || null,
+        song_id: songId || null,
+        metadata: metadata && typeof metadata === 'object' ? metadata : {}
+      }]);
+  } catch (err) {
+    console.warn('[analytics] activity skipped:', err.message);
+  }
+}
+
+async function safeFetch(label, queryPromise, fallback) {
+  try {
+    const result = await queryPromise;
+    if (result.error) {
+      console.warn(`[analytics] ${label} skipped:`, result.error.message);
+      return fallback;
+    }
+    if (Object.prototype.hasOwnProperty.call(result, 'count') && result.count !== null) {
+      return result.count;
+    }
+    return result.data ?? fallback;
+  } catch (err) {
+    console.warn(`[analytics] ${label} skipped:`, err.message);
+    return fallback;
+  }
+}
+
 // Multer 설정 (파일 업로드 메모리 저장소)
 const upload = multer({ storage: multer.memoryStorage() }).fields([
   { name: 'audio', maxCount: 1 },
@@ -96,6 +152,22 @@ app.post('/api/admin/verify', (req, res) => {
   } catch (err) {
     console.error('어드민 검증 오류:', err.message);
     res.status(500).json({ error: '비밀번호 검증 중 오류가 발생했습니다.' });
+  }
+});
+
+// 2.6. 사용자 활동 이벤트 수집 (POST /api/activity)
+app.post('/api/activity', async (req, res) => {
+  try {
+    const { eventType, userId, sessionId, songId, metadata } = req.body || {};
+    if (!eventType) {
+      return res.status(400).json({ error: 'eventType은 필수입니다.' });
+    }
+
+    await recordActivity({ eventType, userId, sessionId, songId, metadata });
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error('활동 이벤트 저장 오류:', err.message);
+    res.status(500).json({ error: '활동 이벤트를 저장할 수 없습니다.' });
   }
 });
 
@@ -339,6 +411,7 @@ app.delete('/api/songs/:id', async (req, res) => {
 app.post('/api/songs/:id/play', async (req, res) => {
   try {
     const { id } = req.params;
+    const { userId, sessionId, source } = req.body || {};
     
     // 먼저 현재 조회수 조회
     const { data: song, error: getErr } = await supabase
@@ -359,9 +432,25 @@ app.post('/api/songs/:id/play', async (req, res) => {
 
     if (updateErr) throw updateErr;
 
-    if (userId) {
-      await supabase.from('play_history').insert([{ user_id: userId, song_id: id }]);
-    }
+    await supabase
+      .from('play_history')
+      .insert([{
+        user_id: userId || null,
+        session_id: sessionId || null,
+        song_id: id,
+        source: source || 'player'
+      }])
+      .then(({ error }) => {
+        if (error) console.warn('[analytics] play history skipped:', error.message);
+      });
+
+    await recordActivity({
+      eventType: 'play',
+      userId,
+      sessionId,
+      songId: id,
+      metadata: { source: source || 'player' }
+    });
 
     res.json({ success: true, play_count: updatedSong.play_count });
   } catch (err) {
@@ -374,7 +463,7 @@ app.post('/api/songs/:id/play', async (req, res) => {
 app.post('/api/songs/:id/like', async (req, res) => {
   try {
     const { id } = req.params;
-    const { sessionId } = req.body; // 클라이언트 식별용 고유 키
+    const { sessionId, userId } = req.body; // 클라이언트 식별용 고유 키
 
     if (!sessionId) {
       return res.status(400).json({ error: 'sessionId는 필수입니다.' });
@@ -403,13 +492,29 @@ app.post('/api/songs/:id/like', async (req, res) => {
       liked = false;
     } else {
       // 좋아요 추가
-      const { error: insertErr } = await supabase
+      const likePayload = { song_id: id, session_id: sessionId };
+      if (userId) likePayload.user_id = userId;
+      let { error: insertErr } = await supabase
         .from('likes')
-        .insert([{ song_id: id, session_id: sessionId }]);
+        .insert([likePayload]);
+
+      if (insertErr && userId && /user_id/i.test(insertErr.message || '')) {
+        const retry = await supabase
+          .from('likes')
+          .insert([{ song_id: id, session_id: sessionId }]);
+        insertErr = retry.error;
+      }
 
       if (insertErr) throw insertErr;
       liked = true;
     }
+
+    await recordActivity({
+      eventType: liked ? 'like' : 'unlike',
+      userId,
+      sessionId,
+      songId: id
+    });
 
     // 업데이트된 likes_count 재조회
     const { data: updatedSong, error: songErr } = await supabase
@@ -479,6 +584,11 @@ app.post('/api/playlists', async (req, res) => {
       .single();
 
     if (error) throw error;
+    await recordActivity({
+      eventType: 'playlist_create',
+      userId,
+      metadata: { playlistId: newPlaylist.id, name }
+    });
     res.status(201).json(newPlaylist);
   } catch (err) {
     console.error('플레이리스트 생성 오류:', err.message);
@@ -529,7 +639,7 @@ app.get('/api/playlists/:id/songs', async (req, res) => {
 app.post('/api/playlists/:id/songs', async (req, res) => {
   try {
     const { id } = req.params;
-    const { songId } = req.body;
+    const { songId, userId, sessionId } = req.body;
 
     if (!songId) return res.status(400).json({ error: 'songId는 필수입니다.' });
 
@@ -546,6 +656,14 @@ app.post('/api/playlists/:id/songs', async (req, res) => {
       throw error;
     }
 
+    await recordActivity({
+      eventType: 'playlist_add',
+      userId,
+      sessionId,
+      songId,
+      metadata: { playlistId: id }
+    });
+
     res.status(201).json(added);
   } catch (err) {
     console.error('플레이리스트 곡 추가 오류:', err.message);
@@ -557,6 +675,7 @@ app.post('/api/playlists/:id/songs', async (req, res) => {
 app.delete('/api/playlists/:id/songs/:songId', async (req, res) => {
   try {
     const { id, songId } = req.params;
+    const { userId, sessionId } = req.body || req.query || {};
 
     const { error } = await supabase
       .from('playlist_songs')
@@ -565,6 +684,13 @@ app.delete('/api/playlists/:id/songs/:songId', async (req, res) => {
       .eq('song_id', songId);
 
     if (error) throw error;
+    await recordActivity({
+      eventType: 'playlist_remove',
+      userId,
+      sessionId,
+      songId,
+      metadata: { playlistId: id }
+    });
     res.json({ success: true, message: '곡이 플레이리스트에서 제거되었습니다.' });
   } catch (err) {
     console.error('플레이리스트 곡 제거 오류:', err.message);
