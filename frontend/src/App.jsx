@@ -665,6 +665,79 @@ function MainApp() {
     fetchSongRequests();
   }, []);
 
+
+  // 노래 만들기 관련 API
+  const fetchSongRequests = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/song-requests`);
+      if (res.ok) {
+        const data = await res.json();
+        setSongRequests(data);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchSongRequestDetail = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/song-requests/${id}?userId=${userSession?.user?.id || ''}`);
+      const data = await res.json();
+      if (res.ok) {
+        setSelectedSongRequest(data);
+        setSongRequestView('detail');
+      } else {
+        showToast(data.error || '권한이 없습니다.');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('글을 불러오지 못했습니다.');
+    }
+  };
+
+  const handleSongRequestSubmit = async (e) => {
+    e.preventDefault();
+    if (!songRequestForm.title || !songRequestForm.content) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/song-requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: userSession?.user?.id, title: songRequestForm.title, content: songRequestForm.content })
+      });
+      if (res.ok) {
+        showToast('요청글이 등록되었습니다.');
+        setSongRequestView('list');
+        fetchSongRequests();
+      } else {
+        const data = await res.json();
+        showToast(data.error || '등록 실패');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSongRequestCommentSubmit = async (e) => {
+    e.preventDefault();
+    if (!songRequestComment || !selectedSongRequest) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/song-requests/${selectedSongRequest.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: userSession?.user?.id, content: songRequestComment })
+      });
+      if (res.ok) {
+        setSongRequestComment('');
+        fetchSongRequestDetail(selectedSongRequest.id);
+      } else {
+        const data = await res.json();
+        showToast(data.error || '댓글 등록 실패');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   async function fetchBoardPosts() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/board`);
