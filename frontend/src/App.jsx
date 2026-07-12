@@ -179,6 +179,10 @@ function MainApp() {
       setUserSession(session);
       if (session) {
         fetchUserProfile(session.user.id);
+        // 로그인 성공 후 주소창에 남은 지저분한 해시(토큰) 값 정리
+        if (window.location.hash.includes('access_token')) {
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
       } else {
         setUserProfile(null);
       }
