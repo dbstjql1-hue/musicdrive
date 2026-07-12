@@ -1612,15 +1612,7 @@ function MainApp() {
               <span>자유게시판</span>
             </div>
           </li>
-          <li>
-            <div 
-              className={`nav-item ${currentView === 'admin' ? 'active' : ''}`}
-              onClick={() => { setCurrentView('admin'); setSelectedPlaylist(null); closeMobileMenu(); }}
-            >
-              <PlusCircle className="icon" />
-              <span>음원 업로드</span>
-            </div>
-          </li>
+          
         </ul>
 
         {/* Auth Section */}
