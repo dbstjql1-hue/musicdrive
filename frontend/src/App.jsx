@@ -59,7 +59,7 @@ function MainApp() {
   // Navigation & Views
   const [currentView, setCurrentView] = useState('home'); // 'home', 'search', 'playlists', 'admin'
   const [selectedPlaylist, setSelectedPlaylist] = useState(null); // 특정 플레이리스트 선택 시 저장
-  const [showIntro, setShowIntro] = useState(true);
+  const [showIntro, setShowIntro] = useState(!window.location.hash.includes('access_token'));
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // Data State
@@ -172,7 +172,13 @@ function MainApp() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUserSession(session);
-      if (session) fetchUserProfile(session.user.id);
+      if (session) {
+        fetchUserProfile(session.user.id);
+        // 확실한 타이밍에 해시(토큰) 정리
+        if (window.location.hash.includes('access_token')) {
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
