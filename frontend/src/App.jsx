@@ -699,18 +699,37 @@ function MainApp() {
     e.preventDefault();
     if (!songRequestForm.title || !songRequestForm.content) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/song-requests`, {
-        method: 'POST',
+      const isEdit = songRequestView === 'edit';
+      const url = isEdit ? `${API_BASE_URL}/api/song-requests/${selectedSongRequest.id}` : `${API_BASE_URL}/api/song-requests`;
+      const res = await fetch(url, {
+        method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: userSession?.user?.id, title: songRequestForm.title, content: songRequestForm.content })
       });
       if (res.ok) {
-        showToast('요청글이 등록되었습니다.');
+        showToast(isEdit ? '요청글이 수정되었습니다.' : '요청글이 등록되었습니다.');
         setSongRequestView('list');
         fetchSongRequests();
       } else {
         const data = await res.json();
-        showToast(data.error || '등록 실패');
+        showToast(data.error || '처리 실패');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteSongRequest = async (id) => {
+    if (!window.confirm('정말 삭제하시겠습니까?')) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/song-requests/${id}?userId=${userSession?.user?.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        showToast('삭제되었습니다.');
+        setSongRequestView('list');
+        fetchSongRequests();
+      } else {
+        const data = await res.json();
+        showToast(data.error || '삭제 실패');
       }
     } catch (err) {
       console.error(err);
@@ -2847,7 +2866,7 @@ function MainApp() {
                   </>
                 )}
 
-                {songRequestView === 'write' && (
+                {['write', 'edit'].includes(songRequestView) && (
                   <div className="board-write-form" style={{
                     background: 'rgba(25, 25, 35, 0.6)',
                     backdropFilter: 'blur(16px)',
@@ -2923,12 +2942,54 @@ function MainApp() {
 
                 {songRequestView === 'detail' && selectedSongRequest && (
                   <div className="board-detail-container">
-                    <div className="board-detail-header">
-                      <h2 className="detail-title">{selectedSongRequest.title}</h2>
-                      <div className="detail-meta">
-                        <span><User size={14} /> {selectedSongRequest.profiles?.email?.split('@')[0] || '익명'}</span>
-                        <span><Clock size={14} /> {new Date(selectedSongRequest.created_at).toLocaleString()}</span>
-                        <span style={{ color: 'var(--primary-color)' }}><Lock size={14} /> 비밀글</span>
+                    <div className="board-detail-header" style={{
+                      background: 'rgba(25, 25, 35, 0.6)',
+                      backdropFilter: 'blur(16px)',
+                      border: '1px solid rgba(255, 255, 255, 0.05)',
+                      borderRadius: '24px',
+                      padding: '30px',
+                      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+                      marginBottom: '20px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                          <span style={{ 
+                            fontSize: '13px', 
+                            fontWeight: '700', 
+                            background: 'linear-gradient(135deg, var(--primary-color), #8a2be2)', 
+                            color: '#fff', 
+                            padding: '6px 14px', 
+                            borderRadius: '20px',
+                            display: 'inline-block',
+                            marginBottom: '16px'
+                          }}>✨ PRIVATE REQUEST</span>
+                          <h2 style={{ fontSize: '32px', marginBottom: '16px', fontWeight: '800', background: 'linear-gradient(90deg, #fff, #a0a0a0)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{selectedSongRequest.title}</h2>
+                          <div className="detail-meta" style={{ display: 'flex', gap: '16px', color: 'var(--text-secondary)', fontSize: '14px' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><User size={14} /> {selectedSongRequest.profiles?.email?.split('@')[0] || '익명'}</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Clock size={14} /> {new Date(selectedSongRequest.created_at).toLocaleString()}</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--primary-color)' }}><Lock size={14} /> 비밀글</span>
+                          </div>
+                        </div>
+                        
+                        {(userSession?.user?.id === selectedSongRequest.user_id || userProfile?.role === 'admin') && (
+                          <div style={{ display: 'flex', gap: '10px' }}>
+                            <button 
+                              onClick={() => {
+                                setSongRequestForm({ title: selectedSongRequest.title, content: selectedSongRequest.content });
+                                setSongRequestView('edit');
+                              }}
+                              style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}
+                            >
+                              수정
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteSongRequest(selectedSongRequest.id)}
+                              style={{ padding: '8px 16px', background: 'rgba(255, 60, 60, 0.2)', color: '#ff6b6b', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}
+                            >
+                              삭제
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                     
@@ -2938,7 +2999,7 @@ function MainApp() {
 
                     <div className="comments-section" style={{ marginTop: '40px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '24px' }}>
                       <h3 style={{ marginBottom: '20px', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <MessageSquare size={16} /> 1:1 대화 (${selectedSongRequest.comments?.length || 0})
+                        <MessageSquare size={16} /> 1:1 대화 ({selectedSongRequest.comments?.length || 0})
                       </h3>
                       
                       <div className="comments-list" style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>

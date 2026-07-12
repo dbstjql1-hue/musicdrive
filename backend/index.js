@@ -1388,7 +1388,7 @@ app.post('/api/song-requests/:id/comments', async (req, res) => {
     const { data, error } = await supabase
       .from('song_request_comments')
       .insert([{ request_id: id, user_id: userId, content }])
-      .select('*, profiles(email, role)')
+      .select()
       .single();
 
     if (error) throw error;
@@ -1396,6 +1396,61 @@ app.post('/api/song-requests/:id/comments', async (req, res) => {
   } catch (err) {
     console.error('댓글 작성 오류:', err.message);
     res.status(500).json({ error: '댓글을 작성할 수 없습니다.' });
+  }
+});
+
+
+// 5. 노래 만들기 요청글 수정
+app.put('/api/song-requests/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, title, content } = req.body;
+
+    if (!userId || !title || !content) return res.status(400).json({ error: '모든 항목을 입력해주세요.' });
+
+    // 권한 확인
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', userId).single();
+    const isAdmin = profile?.role === 'admin';
+    const { data: request } = await supabase.from('song_requests').select('user_id').eq('id', id).single();
+    if (!request) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
+    if (request.user_id !== userId && !isAdmin) return res.status(403).json({ error: '권한이 없습니다.' });
+
+    const { data, error } = await supabase
+      .from('song_requests')
+      .update({ title, content })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error('요청글 수정 오류:', err.message);
+    res.status(500).json({ error: '게시글을 수정할 수 없습니다.' });
+  }
+});
+
+// 6. 노래 만들기 요청글 삭제
+app.delete('/api/song-requests/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.query;
+
+    if (!userId) return res.status(403).json({ error: '로그인이 필요합니다.' });
+
+    // 권한 확인
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', userId).single();
+    const isAdmin = profile?.role === 'admin';
+    const { data: request } = await supabase.from('song_requests').select('user_id').eq('id', id).single();
+    if (!request) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
+    if (request.user_id !== userId && !isAdmin) return res.status(403).json({ error: '권한이 없습니다.' });
+
+    const { error } = await supabase.from('song_requests').delete().eq('id', id);
+    if (error) throw error;
+    res.json({ message: '삭제되었습니다.' });
+  } catch (err) {
+    console.error('요청글 삭제 오류:', err.message);
+    res.status(500).json({ error: '게시글을 삭제할 수 없습니다.' });
   }
 });
 
