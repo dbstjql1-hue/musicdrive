@@ -695,6 +695,16 @@ function MainApp() {
     }
   };
 
+  
+  const getStatusStyle = (status) => {
+    switch (status) {
+      case '노래 만드는중': return { bg: 'rgba(255, 165, 0, 0.2)', color: '#ffa500' };
+      case '노래 완성': return { bg: 'rgba(0, 200, 255, 0.2)', color: '#00c8ff' };
+      case '노래등록완료': return { bg: 'rgba(50, 255, 100, 0.2)', color: '#32ff64' };
+      default: return { bg: 'rgba(255, 255, 255, 0.1)', color: '#ccc' }; // 대기중
+    }
+  };
+
   const handleSongRequestSubmit = async (e) => {
     e.preventDefault();
     if (!songRequestForm.title || !songRequestForm.content) return;
@@ -2968,12 +2978,43 @@ function MainApp() {
                             <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><User size={14} /> {selectedSongRequest.profiles?.email?.split('@')[0] || '익명'}</span>
                             <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Clock size={14} /> {new Date(selectedSongRequest.created_at).toLocaleString()}</span>
                             <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--primary-color)' }}><Lock size={14} /> 비밀글</span>
+                            <span style={{
+                              display: 'flex', alignItems: 'center', gap: '6px',
+                              background: getStatusStyle(selectedSongRequest.status || '대기중').bg,
+                              color: getStatusStyle(selectedSongRequest.status || '대기중').color,
+                              padding: '2px 8px', borderRadius: '12px', fontWeight: 'bold'
+                            }}>{selectedSongRequest.status || '대기중'}</span>
                           </div>
                         </div>
                         
-                        {(userSession?.user?.id === selectedSongRequest.user_id || userProfile?.role === 'admin') && (
-                          <div style={{ display: 'flex', gap: '10px' }}>
-                            <button 
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-end' }}>
+                            {userProfile?.role === 'admin' && (
+                              <select 
+                                value={selectedSongRequest.status || '대기중'}
+                                onChange={async (e) => {
+                                  const newStatus = e.target.value;
+                                  try {
+                                    const res = await fetch(`${API_BASE_URL}/api/song-requests/${selectedSongRequest.id}`, {
+                                      method: 'PUT',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ userId: userSession?.user?.id, status: newStatus })
+                                    });
+                                    if (res.ok) fetchSongRequestDetail(selectedSongRequest.id);
+                                  } catch (err) { console.error(err); }
+                                }}
+                                style={{
+                                  padding: '6px 12px', background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', outline: 'none'
+                                }}
+                              >
+                                <option value="대기중">대기중</option>
+                                <option value="노래 만드는중">노래 만드는중</option>
+                                <option value="노래 완성">노래 완성</option>
+                                <option value="노래등록완료">노래등록완료</option>
+                              </select>
+                            )}
+                            {(userSession?.user?.id === selectedSongRequest.user_id || userProfile?.role === 'admin') && (
+                              <div style={{ display: 'flex', gap: '10px' }}>
+                                <button 
                               onClick={() => {
                                 setSongRequestForm({ title: selectedSongRequest.title, content: selectedSongRequest.content });
                                 setSongRequestView('edit');
@@ -2988,8 +3029,9 @@ function MainApp() {
                             >
                               삭제
                             </button>
+                              </div>
+                            )}
                           </div>
-                        )}
                       </div>
                     </div>
                     

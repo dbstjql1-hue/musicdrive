@@ -1404,9 +1404,9 @@ app.post('/api/song-requests/:id/comments', async (req, res) => {
 app.put('/api/song-requests/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId, title, content } = req.body;
+    const { userId, title, content, status } = req.body;
 
-    if (!userId || !title || !content) return res.status(400).json({ error: '모든 항목을 입력해주세요.' });
+    if (!userId) return res.status(400).json({ error: '권한이 없습니다.' });
 
     // 권한 확인
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', userId).single();
@@ -1415,9 +1415,14 @@ app.put('/api/song-requests/:id', async (req, res) => {
     if (!request) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
     if (request.user_id !== userId && !isAdmin) return res.status(403).json({ error: '권한이 없습니다.' });
 
+    const updateData = {};
+    if (title) updateData.title = title;
+    if (content) updateData.content = content;
+    if (isAdmin && status) updateData.status = status;
+
     const { data, error } = await supabase
       .from('song_requests')
-      .update({ title, content })
+      .update(updateData)
       .eq('id', id)
       .select()
       .single();
