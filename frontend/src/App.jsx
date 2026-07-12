@@ -1263,6 +1263,18 @@ function MainApp() {
     }
   };
 
+  const fetchAdminStats = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/stats`);
+      if (res.ok) {
+        const data = await res.json();
+        setAdminStats(data);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const fetchMembers = async () => {
     const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
     if (data) setMemberList(data);

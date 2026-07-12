@@ -359,6 +359,10 @@ app.post('/api/songs/:id/play', async (req, res) => {
 
     if (updateErr) throw updateErr;
 
+    if (userId) {
+      await supabase.from('play_history').insert([{ user_id: userId, song_id: id }]);
+    }
+
     res.json({ success: true, play_count: updatedSong.play_count });
   } catch (err) {
     console.error('재생 횟수 업데이트 오류:', err.message);
@@ -1100,6 +1104,36 @@ app.delete('/api/board/comments/:commentId', async (req, res) => {
 // 기본 상태 검사 엔드포인트
 app.get('/', (req, res) => {
   res.json({ message: 'musicdrive Backend API Server is running!' });
+});
+
+
+// 15. 어드민 통계 (GET /api/admin/stats)
+app.get('/api/admin/stats', async (req, res) => {
+  try {
+    const { count: totalUsers } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
+    const { count: totalSongs } = await supabase.from('songs').select('*', { count: 'exact', head: true });
+    const { data: topSongs } = await supabase.from('songs').select('id, title, artist, play_count').order('play_count', { ascending: false }).limit(5);
+    const { data: recentPlays } = await supabase
+      .from('play_history')
+      .select(`
+        id,
+        played_at,
+        profiles ( email ),
+        songs ( title, artist )
+      `)
+      .order('played_at', { ascending: false })
+      .limit(20);
+
+    res.json({
+      totalUsers: totalUsers || 0,
+      totalSongs: totalSongs || 0,
+      topSongs: topSongs || [],
+      recentPlays: recentPlays || []
+    });
+  } catch (err) {
+    console.error('통계 조회 오류:', err.message);
+    res.status(500).json({ error: '통계를 불러올 수 없습니다.' });
+  }
 });
 
 app.listen(PORT, () => {
