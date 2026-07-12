@@ -580,7 +580,7 @@ app.delete('/api/playlists/:id/songs/:songId', async (req, res) => {
 // 1. VS 대결 목록 조회 (GET /api/vs-matches)
 app.get('/api/vs-matches', async (req, res) => {
   try {
-    const { sessionId } = req.query;
+    const { userId } = req.query;
 
     // 1) 전체 대결 가져오기
     const { data: matches, error: matchesErr } = await supabase
@@ -620,12 +620,12 @@ app.get('/api/vs-matches', async (req, res) => {
 
       // 현재 사용자가 투표했는지 여부 확인
       let userVotedSongId = null;
-      if (sessionId) {
+      if (userId) {
         const { data: userVote, error: voteErr } = await supabase
           .from('vs_votes')
           .select('song_id')
           .eq('match_id', match.id)
-          .eq('session_id', sessionId)
+          .eq('user_id', userId)
           .maybeSingle();
 
         if (voteErr) throw voteErr;
@@ -689,7 +689,7 @@ app.post('/api/vs-matches', async (req, res) => {
 app.post('/api/vs-matches/:id/vote', async (req, res) => {
   try {
     const { id } = req.params;
-    const { songId, sessionId } = req.body;
+    const { songId, userId } = req.body;
 
     if (!songId || !sessionId) {
       return res.status(400).json({ error: 'songId 및 sessionId는 필수입니다.' });
@@ -700,7 +700,7 @@ app.post('/api/vs-matches/:id/vote', async (req, res) => {
       .from('vs_votes')
       .select('*')
       .eq('match_id', id)
-      .eq('session_id', sessionId)
+      .eq('user_id', userId)
       .maybeSingle();
 
     if (checkErr) throw checkErr;
@@ -713,7 +713,7 @@ app.post('/api/vs-matches/:id/vote', async (req, res) => {
           .from('vs_votes')
           .delete()
           .eq('match_id', id)
-          .eq('session_id', sessionId);
+          .eq('user_id', userId);
 
         if (deleteErr) throw deleteErr;
         return res.json({ success: true, voted: false, songId: null });
@@ -723,7 +723,7 @@ app.post('/api/vs-matches/:id/vote', async (req, res) => {
           .from('vs_votes')
           .update({ song_id: songId })
           .eq('match_id', id)
-          .eq('session_id', sessionId)
+          .eq('user_id', userId)
           .select()
           .single();
 
@@ -738,7 +738,7 @@ app.post('/api/vs-matches/:id/vote', async (req, res) => {
           {
             match_id: id,
             song_id: songId,
-            session_id: sessionId
+            user_id: userId
           }
         ])
         .select()
