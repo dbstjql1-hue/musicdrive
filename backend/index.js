@@ -1459,6 +1459,263 @@ app.delete('/api/song-requests/:id', async (req, res) => {
   }
 });
 
+// ==========================================
+// 음원 동기화 관리 API
+// ==========================================
+
+// 1. 미동기화 음원 감지 (GET /api/admin/unsynced-songs)
+app.get('/api/admin/unsynced-songs', async (req, res) => {
+  try {
+    const { adminPassword } = req.query;
+    const expectedPassword = process.env.ADMIN_PASSWORD || 'admin1234';
+    if (adminPassword !== expectedPassword) {
+      return res.status(403).json({ error: '관리자 인증이 필요합니다.' });
+    }
+
+    // DB에서 전체 곡 조회
+    const { data: songs, error } = await supabase
+      .from('songs')
+      .select('id, title, artist, audio_url, cover_url, created_at')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    // Supabase Storage URL을 포함하는 곡 필터링
+    const unsyncedSongs = [];
+    const syncedSongs = [];
+
+    for (const song of songs) {
+      const audioUnsynced = song.audio_url && song.audio_url.includes('supabase.co');
+      const coverUnsynced = song.cover_url && song.cover_url.includes('supabase.co') && !song.cover_url.includes('unsplash.com');
+
+      if (audioUnsynced || coverUnsynced) {
+        unsyncedSongs.push({
+          ...song,
+          audioUnsynced,
+          coverUnsynced
+        });
+      } else {
+        syncedSongs.push(song);
+      }
+    }
+
+    // Supabase Storage 버킷의 파일 목록 조회하여 용량 추정
+    let estimatedSizeMB = 0;
+    try {
+      const { data: storageFiles } = await supabase.storage.from('songs').list('', { limit: 1000 });
+      if (storageFiles) {
+        estimatedSizeMB = storageFiles.reduce((sum, f) => sum + (f.metadata?.size || 0), 0) / (1024 * 1024);
+      }
+    } catch (e) {
+      console.warn('Storage 용량 조회 실패:', e.message);
+    }
+
+    res.json({
+      unsyncedCount: unsyncedSongs.length,
+      syncedCount: syncedSongs.length,
+      totalCount: songs.length,
+      estimatedSizeMB: Math.round(estimatedSizeMB * 10) / 10,
+      unsyncedSongs,
+      syncedSongs
+    });
+  } catch (err) {
+    console.error('미동기화 음원 감지 오류:', err.message);
+    res.status(500).json({ error: '미동기화 음원을 확인할 수 없습니다.' });
+  }
+});
+
+// 2. 동기화 실행 - SSE 스트리밍 (POST /api/admin/sync)
+app.post('/api/admin/sync', async (req, res) => {
+  try {
+    const { adminPassword } = req.body;
+    const expectedPassword = process.env.ADMIN_PASSWORD || 'admin1234';
+    if (adminPassword !== expectedPassword) {
+      return res.status(403).json({ error: '관리자 인증이 필요합니다.' });
+    }
+
+    // SSE 헤더 설정
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*'
+    });
+
+    const sendEvent = (type, message, data = {}) => {
+      const event = JSON.stringify({ type, message, ...data, timestamp: new Date().toISOString() });
+      res.write(`data: ${event}\n\n`);
+    };
+
+    sendEvent('start', '🔄 동기화 프로세스를 시작합니다...');
+
+    // DB에서 미동기화 곡 조회
+    const { data: songs, error: fetchErr } = await supabase
+      .from('songs')
+      .select('*');
+
+    if (fetchErr) {
+      sendEvent('error', `❌ 데이터베이스 조회 실패: ${fetchErr.message}`);
+      sendEvent('done', '동기화가 실패로 종료되었습니다.', { success: false });
+      res.end();
+      return;
+    }
+
+    const unsyncedSongs = songs.filter(s =>
+      (s.audio_url && s.audio_url.includes('supabase.co')) ||
+      (s.cover_url && s.cover_url.includes('supabase.co') && !s.cover_url.includes('unsplash.com'))
+    );
+
+    sendEvent('info', `📋 총 ${unsyncedSongs.length}곡의 미동기화 음원을 발견했습니다.`);
+
+    if (unsyncedSongs.length === 0) {
+      sendEvent('done', '✅ 모든 음원이 이미 동기화된 상태입니다.', { success: true, syncCount: 0 });
+      res.end();
+      return;
+    }
+
+    let syncCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < unsyncedSongs.length; i++) {
+      const song = unsyncedSongs[i];
+      sendEvent('progress', `🔄 [${i + 1}/${unsyncedSongs.length}] "${song.title}" 처리 중...`, { current: i + 1, total: unsyncedSongs.length, songTitle: song.title });
+
+      try {
+        let newAudioUrl = song.audio_url;
+        let newCoverUrl = song.cover_url;
+        let audioPathInBucket = null;
+        let coverPathInBucket = null;
+
+        // 오디오 URL 처리
+        if (song.audio_url && song.audio_url.includes('/storage/v1/object/public/songs/')) {
+          const parts = song.audio_url.split('/storage/v1/object/public/songs/');
+          if (parts.length > 1) {
+            const fileName = decodeURIComponent(parts[1]);
+            newAudioUrl = `/songs/${fileName}`;
+            audioPathInBucket = fileName;
+            sendEvent('step', `  📁 오디오 URL 변환: ${fileName}`);
+          }
+        }
+
+        // 커버 URL 처리
+        if (song.cover_url && song.cover_url.includes('/storage/v1/object/public/covers/') && !song.cover_url.includes('unsplash.com')) {
+          const parts = song.cover_url.split('/storage/v1/object/public/covers/');
+          if (parts.length > 1) {
+            const fileName = decodeURIComponent(parts[1]);
+            newCoverUrl = `/covers/${fileName}`;
+            coverPathInBucket = fileName;
+            sendEvent('step', `  🖼️ 커버 URL 변환: ${fileName}`);
+          }
+        }
+
+        // DB 업데이트
+        const { error: updateErr } = await supabase
+          .from('songs')
+          .update({
+            audio_url: newAudioUrl,
+            cover_url: newCoverUrl
+          })
+          .eq('id', song.id);
+
+        if (updateErr) {
+          sendEvent('error', `  ❌ [${song.title}] DB 업데이트 실패: ${updateErr.message}`);
+          failCount++;
+          continue;
+        }
+        sendEvent('step', `  ✅ [${song.title}] DB URL 업데이트 완료`);
+
+        // Supabase Storage 파일 삭제
+        if (audioPathInBucket) {
+          const { error: delErr } = await supabase.storage.from('songs').remove([audioPathInBucket]);
+          if (delErr) {
+            sendEvent('warning', `  ⚠️ [${song.title}] 오디오 Storage 삭제 실패: ${delErr.message}`);
+          } else {
+            sendEvent('step', `  🗑️ [${song.title}] 오디오 Storage 파일 삭제 완료`);
+          }
+        }
+
+        if (coverPathInBucket) {
+          const { error: delErr } = await supabase.storage.from('covers').remove([coverPathInBucket]);
+          if (delErr) {
+            sendEvent('warning', `  ⚠️ [${song.title}] 커버 Storage 삭제 실패: ${delErr.message}`);
+          } else {
+            sendEvent('step', `  🗑️ [${song.title}] 커버 Storage 파일 삭제 완료`);
+          }
+        }
+
+        syncCount++;
+        sendEvent('success', `  ✅ [${song.title}] 동기화 완료!`);
+      } catch (songErr) {
+        sendEvent('error', `  ❌ [${song.title}] 처리 중 오류: ${songErr.message}`);
+        failCount++;
+      }
+    }
+
+    sendEvent('done', `🎉 동기화 완료! 성공: ${syncCount}곡, 실패: ${failCount}곡`, {
+      success: true,
+      syncCount,
+      failCount
+    });
+
+    // 중요 안내
+    if (syncCount > 0) {
+      sendEvent('info', '⚠️ 중요: 음원 파일이 아직 로컬 frontend/public/songs/ 폴더에 없을 수 있습니다.');
+      sendEvent('info', '📌 로컬에서 sync.bat을 실행하거나, 아래 다운로드 버튼으로 파일을 받아 frontend/public/songs/ 에 저장 후 git push 해주세요.');
+    }
+
+    res.end();
+  } catch (err) {
+    console.error('동기화 오류:', err);
+    try {
+      const event = JSON.stringify({ type: 'error', message: `❌ 동기화 처리 중 예기치 못한 오류: ${err.message}` });
+      res.write(`data: ${event}\n\n`);
+      res.end();
+    } catch (e) {
+      res.status(500).end();
+    }
+  }
+});
+
+// 3. 개별 음원 파일 프록시 다운로드 (GET /api/admin/download-song/:bucket/:filename)
+app.get('/api/admin/download-song/:bucket/:filename', async (req, res) => {
+  try {
+    const { adminPassword } = req.query;
+    const expectedPassword = process.env.ADMIN_PASSWORD || 'admin1234';
+    if (adminPassword !== expectedPassword) {
+      return res.status(403).json({ error: '관리자 인증이 필요합니다.' });
+    }
+
+    const { bucket, filename } = req.params;
+    const decodedFilename = decodeURIComponent(filename);
+
+    // 유효한 버킷인지 확인
+    if (!['songs', 'covers'].includes(bucket)) {
+      return res.status(400).json({ error: '유효하지 않은 버킷입니다.' });
+    }
+
+    // Supabase Storage에서 파일 다운로드
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .download(decodedFilename);
+
+    if (error) {
+      return res.status(404).json({ error: `파일을 찾을 수 없습니다: ${error.message}` });
+    }
+
+    // 파일 전송
+    const buffer = Buffer.from(await data.arrayBuffer());
+    const contentType = bucket === 'songs' ? 'audio/mpeg' : 'image/png';
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(decodedFilename)}"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
+  } catch (err) {
+    console.error('파일 다운로드 오류:', err.message);
+    res.status(500).json({ error: '파일을 다운로드할 수 없습니다.' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
 });

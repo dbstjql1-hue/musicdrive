@@ -2652,3 +2652,374 @@ body {
 .comment-delete-btn:hover {
   color: #ff4d6d;
 }
+
+/* ==========================================
+   Sync Management Tab Styles
+   ========================================== */
+
+/* Sync tab badge */
+.sync-badge-count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: linear-gradient(135deg, #ff4d6d, #e03e5c);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  box-shadow: 0 2px 8px rgba(255, 77, 109, 0.4);
+  animation: syncBadgePulse 2s ease-in-out infinite;
+}
+
+@keyframes syncBadgePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+/* Warning Banner */
+.sync-warning-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: linear-gradient(135deg, rgba(255, 170, 51, 0.12), rgba(255, 100, 50, 0.08));
+  border: 1px solid rgba(255, 170, 51, 0.25);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 8px;
+}
+
+.sync-warning-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.sync-warning-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sync-warning-content strong {
+  color: #ffaa33;
+  font-size: 15px;
+}
+
+.sync-warning-content span {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.sync-warning-size {
+  font-weight: 600;
+  color: #ff8855 !important;
+}
+
+/* OK Banner */
+.sync-ok-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: linear-gradient(135deg, rgba(81, 207, 102, 0.10), rgba(40, 167, 69, 0.06));
+  border: 1px solid rgba(81, 207, 102, 0.20);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 8px;
+}
+
+.sync-ok-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.sync-ok-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sync-ok-content strong {
+  color: #51cf66;
+  font-size: 15px;
+}
+
+.sync-ok-content span {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* Stat Cards */
+.sync-stat-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 18px 16px;
+  text-align: center;
+  transition: var(--transition);
+}
+
+.sync-stat-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.sync-stat-number {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.sync-stat-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sync-stat-ok {
+  border-color: rgba(81, 207, 102, 0.15);
+}
+
+.sync-stat-ok .sync-stat-number {
+  color: #51cf66;
+}
+
+.sync-stat-warn {
+  border-color: rgba(255, 170, 51, 0.20);
+  background: rgba(255, 170, 51, 0.06);
+}
+
+.sync-stat-warn .sync-stat-number {
+  color: #ffaa33;
+}
+
+/* Song Table */
+.sync-song-table {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.sync-song-header {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr 1fr 0.8fr 1fr;
+  gap: 8px;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sync-song-row {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr 1fr 0.8fr 1fr;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  align-items: center;
+  transition: background 0.2s ease;
+}
+
+.sync-song-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sync-song-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sync-song-artist {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sync-song-date {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Status Badge */
+.sync-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.sync-status-unsynced {
+  background: rgba(255, 170, 51, 0.15);
+  color: #ffaa33;
+  border: 1px solid rgba(255, 170, 51, 0.25);
+}
+
+.sync-status-synced {
+  background: rgba(81, 207, 102, 0.10);
+  color: #51cf66;
+  border: 1px solid rgba(81, 207, 102, 0.20);
+}
+
+/* Download Button */
+.sync-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  background: rgba(157, 78, 221, 0.12);
+  color: #c084fc;
+  border: 1px solid rgba(157, 78, 221, 0.25);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: var(--transition);
+  cursor: pointer;
+}
+
+.sync-download-btn:hover {
+  background: rgba(157, 78, 221, 0.25);
+  color: #d8b4fe;
+  transform: translateY(-1px);
+}
+
+/* Sync Log Console */
+.sync-log-container {
+  margin-top: 8px;
+}
+
+.sync-log-console {
+  background: #0a0a12;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 16px;
+  max-height: 350px;
+  overflow-y: auto;
+  font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.sync-log-line {
+  display: flex;
+  gap: 10px;
+  padding: 2px 0;
+  animation: syncLogFadeIn 0.3s ease-out;
+}
+
+@keyframes syncLogFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sync-log-time {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-size: 11px;
+  min-width: 72px;
+}
+
+.sync-log-msg {
+  color: var(--text-secondary);
+  word-break: break-word;
+}
+
+.sync-log-error .sync-log-msg {
+  color: #ff6b6b;
+}
+
+.sync-log-warning .sync-log-msg {
+  color: #ffaa33;
+}
+
+.sync-log-success .sync-log-msg {
+  color: #51cf66;
+}
+
+.sync-log-step .sync-log-msg {
+  color: #74c0fc;
+}
+
+.sync-log-progress .sync-log-msg {
+  color: #c084fc;
+  font-weight: 500;
+}
+
+/* Complete Banner */
+.sync-complete-banner {
+  margin-top: 12px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, rgba(81, 207, 102, 0.10), rgba(40, 167, 69, 0.06));
+  border: 1px solid rgba(81, 207, 102, 0.20);
+  border-radius: 10px;
+  color: #51cf66;
+  font-weight: 600;
+  font-size: 15px;
+  text-align: center;
+}
+
+.sync-complete-banner code {
+  background: rgba(255, 255, 255, 0.10);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #c084fc;
+}
+
+/* Spinning icon */
+.sync-spin-icon {
+  animation: syncSpin 1.2s linear infinite;
+}
+
+@keyframes syncSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sync-song-header,
+  .sync-song-row {
+    grid-template-columns: 2fr 1fr 0.8fr;
+  }
+
+  .sync-song-header > :nth-child(3),
+  .sync-song-header > :nth-child(5),
+  .sync-song-row > :nth-child(3),
+  .sync-song-row > :nth-child(5) {
+    display: none;
+  }
+
+  .sync-stat-card {
+    padding: 14px 10px;
+  }
+
+  .sync-stat-number {
+    font-size: 22px;
+  }
+}

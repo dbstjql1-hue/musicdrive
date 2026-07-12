@@ -149,6 +149,12 @@ function MainApp() {
   const [adminStats, setAdminStats] = useState(null);
   const [adminVsStats, setAdminVsStats] = useState(null);
   const [memberList, setMemberList] = useState([]);
+
+  // Sync Management State
+  const [unsyncedData, setUnsyncedData] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncLogs, setSyncLogs] = useState([]);
+  const [syncComplete, setSyncComplete] = useState(false);
   
   // Fullscreen Modal Player States
   const [isFullscreenPlayerOpen, setIsFullscreenPlayerOpen] = useState(false);
@@ -1523,6 +1529,80 @@ function MainApp() {
     }
   };
 
+  // 미동기화 음원 조회
+  const fetchUnsyncedSongs = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/unsynced-songs?adminPassword=${encodeURIComponent(adminPassword)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setUnsyncedData(data);
+      } else {
+        console.warn('미동기화 음원 조회 실패');
+      }
+    } catch (err) {
+      console.error('미동기화 음원 조회 오류:', err);
+    }
+  };
+
+  // SSE 기반 동기화 실행
+  const runSync = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    setSyncLogs([]);
+    setSyncComplete(false);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminPassword })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        showToast(errData.error || '동기화 실행에 실패했습니다.');
+        setIsSyncing(false);
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(line.slice(6));
+              setSyncLogs(prev => [...prev, event]);
+
+              if (event.type === 'done') {
+                setSyncComplete(true);
+                setIsSyncing(false);
+                fetchUnsyncedSongs();
+              }
+            } catch (e) {
+              // JSON 파싱 실패 무시
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('동기화 오류:', err);
+      setSyncLogs(prev => [...prev, { type: 'error', message: `❌ 연결 오류: ${err.message}`, timestamp: new Date().toISOString() }]);
+      showToast('동기화 중 연결 오류가 발생했습니다.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // 6. 어드민 인증 처리업로드 처리
   const handleAdminAuth = async (e) => {
     e.preventDefault();
@@ -1546,6 +1626,7 @@ function MainApp() {
         fetchAdminStats();
         fetchAdminVsStats();
         fetchMembers();
+        fetchUnsyncedSongs();
         showToast('관리자 인증에 성공했습니다.');
       } else {
         showToast(data.error || '비밀번호가 올바르지 않습니다.');
@@ -2506,6 +2587,12 @@ function MainApp() {
                       <button className={adminTab === 'dashboard' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => { setAdminTab('dashboard'); fetchAdminStats(); }}>대시보드</button>
                       <button className={adminTab === 'vsstats' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => { setAdminTab('vsstats'); fetchAdminVsStats(); }}>투표 통계</button>
                       <button className={adminTab === 'upload' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => setAdminTab('upload')}>음원 등록</button>
+                      <button className={adminTab === 'sync' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => { setAdminTab('sync'); fetchUnsyncedSongs(); }} style={{ position: 'relative' }}>
+                        🔄 동기화
+                        {unsyncedData && unsyncedData.unsyncedCount > 0 && (
+                          <span className="sync-badge-count">{unsyncedData.unsyncedCount}</span>
+                        )}
+                      </button>
                       <button className={adminTab === 'members' ? 'btn-primary-glow' : 'btn-secondary'} onClick={() => { setAdminTab('members'); fetchMembers(); }}>회원 관리</button>
                     </div>
 
@@ -2758,6 +2845,202 @@ function MainApp() {
                           </tbody>
                         </table>
                       </div>
+                    </div>
+                  )}
+
+                  {adminTab === 'sync' && (
+                    <div className="admin-card">
+                      <h2 style={{ marginBottom: '24px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        🔄 음원 동기화 관리
+                      </h2>
+
+                      {/* 미동기화 상태 요약 */}
+                      {unsyncedData ? (
+                        <>
+                          {unsyncedData.unsyncedCount > 0 ? (
+                            <div className="sync-warning-banner">
+                              <div className="sync-warning-icon">⚠️</div>
+                              <div className="sync-warning-content">
+                                <strong>미동기화 음원 {unsyncedData.unsyncedCount}곡 감지됨</strong>
+                                <span>Supabase Storage에 파일이 남아 있어 트래픽이 소모되고 있습니다.</span>
+                                {unsyncedData.estimatedSizeMB > 0 && (
+                                  <span className="sync-warning-size">추정 용량: ~{unsyncedData.estimatedSizeMB}MB</span>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="sync-ok-banner">
+                              <div className="sync-ok-icon">✅</div>
+                              <div className="sync-ok-content">
+                                <strong>모든 음원이 동기화되었습니다</strong>
+                                <span>총 {unsyncedData.totalCount}곡 — Supabase Storage 트래픽 소모 없음</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 통계 카드 */}
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', margin: '20px 0' }}>
+                            <div className="sync-stat-card">
+                              <div className="sync-stat-number">{unsyncedData.totalCount}</div>
+                              <div className="sync-stat-label">전체 음원</div>
+                            </div>
+                            <div className="sync-stat-card sync-stat-ok">
+                              <div className="sync-stat-number">{unsyncedData.syncedCount}</div>
+                              <div className="sync-stat-label">동기화됨</div>
+                            </div>
+                            <div className={`sync-stat-card ${unsyncedData.unsyncedCount > 0 ? 'sync-stat-warn' : 'sync-stat-ok'}`}>
+                              <div className="sync-stat-number">{unsyncedData.unsyncedCount}</div>
+                              <div className="sync-stat-label">미동기화</div>
+                            </div>
+                          </div>
+
+                          {/* 미동기화 음원 목록 */}
+                          {unsyncedData.unsyncedCount > 0 && (
+                            <>
+                              <h3 style={{ margin: '24px 0 12px', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                ⚠️ 미동기화 음원 목록
+                              </h3>
+                              <div className="sync-song-table">
+                                <div className="sync-song-header">
+                                  <span>곡 제목</span>
+                                  <span>아티스트</span>
+                                  <span>등록일</span>
+                                  <span>상태</span>
+                                  <span>액션</span>
+                                </div>
+                                {unsyncedData.unsyncedSongs.map(song => {
+                                  // 오디오 파일명 추출
+                                  let audioFileName = null;
+                                  if (song.audioUnsynced && song.audio_url) {
+                                    const parts = song.audio_url.split('/storage/v1/object/public/songs/');
+                                    if (parts.length > 1) audioFileName = decodeURIComponent(parts[1]);
+                                  }
+                                  return (
+                                    <div key={song.id} className="sync-song-row">
+                                      <span className="sync-song-title">{song.title}</span>
+                                      <span className="sync-song-artist">{song.artist}</span>
+                                      <span className="sync-song-date">{new Date(song.created_at).toLocaleDateString()}</span>
+                                      <span>
+                                        <span className="sync-status-badge sync-status-unsynced">미동기화</span>
+                                      </span>
+                                      <span>
+                                        {audioFileName && (
+                                          <a
+                                            href={song.audio_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="sync-download-btn"
+                                            title="음원 파일 다운로드"
+                                          >
+                                            📥 다운로드
+                                          </a>
+                                        )}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              {/* 동기화 실행 버튼 */}
+                              <div style={{ display: 'flex', gap: '12px', marginTop: '20px', flexWrap: 'wrap' }}>
+                                <button
+                                  className="btn-primary-glow"
+                                  onClick={runSync}
+                                  disabled={isSyncing}
+                                  style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                                >
+                                  {isSyncing ? (
+                                    <>
+                                      <RefreshCw size={16} className="sync-spin-icon" />
+                                      동기화 진행 중...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <RefreshCw size={16} />
+                                      전체 동기화 실행
+                                    </>
+                                  )}
+                                </button>
+                                <button
+                                  className="btn-secondary"
+                                  onClick={fetchUnsyncedSongs}
+                                  disabled={isSyncing}
+                                >
+                                  🔍 다시 검사
+                                </button>
+                              </div>
+                            </>
+                          )}
+
+                          {/* 동기화 진행 로그 */}
+                          {syncLogs.length > 0 && (
+                            <div className="sync-log-container">
+                              <h3 style={{ margin: '24px 0 12px', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                📋 동기화 로그
+                              </h3>
+                              <div className="sync-log-console" id="sync-log-console">
+                                {syncLogs.map((log, idx) => {
+                                  let logClass = 'sync-log-line';
+                                  if (log.type === 'error') logClass += ' sync-log-error';
+                                  else if (log.type === 'warning') logClass += ' sync-log-warning';
+                                  else if (log.type === 'success' || log.type === 'done') logClass += ' sync-log-success';
+                                  else if (log.type === 'step') logClass += ' sync-log-step';
+                                  else if (log.type === 'progress') logClass += ' sync-log-progress';
+
+                                  return (
+                                    <div key={idx} className={logClass}>
+                                      <span className="sync-log-time">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                                      <span className="sync-log-msg">{log.message}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              {syncComplete && (
+                                <div className="sync-complete-banner">
+                                  🎉 동기화가 완료되었습니다!
+                                  <p style={{ fontSize: '12px', marginTop: '8px', opacity: 0.8 }}>
+                                    로컬에서 <code>sync.bat</code>을 실행하거나 git push를 진행하여 파일을 배포하세요.
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* 동기화된 음원 목록 (접기 가능) */}
+                          {unsyncedData.syncedCount > 0 && (
+                            <details style={{ marginTop: '24px' }}>
+                              <summary style={{ cursor: 'pointer', fontSize: '14px', color: 'var(--text-secondary)', padding: '8px 0' }}>
+                                ✅ 동기화된 음원 ({unsyncedData.syncedCount}곡) 보기
+                              </summary>
+                              <div className="sync-song-table" style={{ marginTop: '8px' }}>
+                                <div className="sync-song-header">
+                                  <span>곡 제목</span>
+                                  <span>아티스트</span>
+                                  <span>등록일</span>
+                                  <span>상태</span>
+                                  <span></span>
+                                </div>
+                                {unsyncedData.syncedSongs.map(song => (
+                                  <div key={song.id} className="sync-song-row">
+                                    <span className="sync-song-title">{song.title}</span>
+                                    <span className="sync-song-artist">{song.artist}</span>
+                                    <span className="sync-song-date">{new Date(song.created_at).toLocaleDateString()}</span>
+                                    <span>
+                                      <span className="sync-status-badge sync-status-synced">동기화됨</span>
+                                    </span>
+                                    <span></span>
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          )}
+                        </>
+                      ) : (
+                        <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                          <RefreshCw size={32} className="sync-spin-icon" style={{ marginBottom: '12px', opacity: 0.5 }} />
+                          <div>미동기화 음원을 검사하는 중...</div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </>
