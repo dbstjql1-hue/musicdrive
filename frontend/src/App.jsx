@@ -2820,7 +2820,7 @@ function MainApp() {
                                   letterSpacing: '0.5px',
                                   boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
                                 }}>
-                                  ✨ ${requestNumber}번째 노래 요청
+                                  ✨ {requestNumber}번째 노래 요청
                                 </span>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(0,0,0,0.3)', padding: '6px 12px', borderRadius: '20px' }}>
                                   <Lock size={12} style={{ color: 'var(--text-secondary)' }} />
