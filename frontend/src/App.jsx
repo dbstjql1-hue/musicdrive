@@ -2856,6 +2856,12 @@ function MainApp() {
                                   <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>비밀글</span>
                                 </div>
                               </div>
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                                <span style={{
+                                  fontSize: '11px', fontWeight: '600', padding: '4px 10px', borderRadius: '12px',
+                                  background: getStatusStyle(req.status || '대기중').bg, color: getStatusStyle(req.status || '대기중').color
+                                }}>{req.status || '대기중'}</span>
+                              </div>
                               <h3 style={{ fontSize: '19px', fontWeight: '600', color: '#fff', margin: '16px 0', lineHeight: '1.5', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                                 {req.title}
                               </h3>
