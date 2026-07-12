@@ -1049,6 +1049,7 @@ function MainApp() {
 
   // 3. 재생기 제어 함수들
   const playSingleSong = (song) => {
+    if (!requireLogin()) return;
     // 큐를 현재 보여지는 곡 목록으로 업데이트하고 현재 곡을 큐에 설정
     const index = songs.findIndex(s => s.id === song.id);
     setQueue(songs);
@@ -1059,6 +1060,7 @@ function MainApp() {
   };
 
   const playRandomSong = () => {
+    if (!requireLogin()) return;
     if (songs.length === 0) return;
     const randomIndex = Math.floor(Math.random() * songs.length);
     const randomSong = songs[randomIndex];
@@ -1071,6 +1073,7 @@ function MainApp() {
   };
 
   const handlePlayPause = () => {
+    if (!requireLogin()) return;
     if (!activeSong && songs.length > 0) {
       playSingleSong(songs[0]);
     } else {
@@ -1079,6 +1082,7 @@ function MainApp() {
   };
 
   const handleNextSong = useCallback(() => {
+    if (!requireLogin()) return;
     if (queue.length === 0) return;
     
     let nextIndex = queueIndex + 1;
@@ -1095,6 +1099,7 @@ function MainApp() {
   }, [queue, queueIndex, isShuffled, incrementPlayCount]);
 
   const handlePrevSong = useCallback(() => {
+    if (!requireLogin()) return;
     if (queue.length === 0) return;
 
     let prevIndex = queueIndex - 1;
