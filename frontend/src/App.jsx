@@ -2808,33 +2808,74 @@ function MainApp() {
                 )}
 
                 {songRequestView === 'write' && (
-                  <div className="board-write-form">
-                    <h2>노래 만들기 요청 작성</h2>
-                    <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '13px' }}>* 작성하신 내용은 본인과 관리자만 볼 수 있습니다.</p>
+                  <div className="board-write-form" style={{
+                    background: 'rgba(25, 25, 35, 0.6)',
+                    backdropFilter: 'blur(16px)',
+                    border: '1px solid rgba(255, 255, 255, 0.05)',
+                    borderRadius: '24px',
+                    padding: '40px',
+                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+                    animation: 'fadeUp 0.4s ease'
+                  }}>
+                    <h2 style={{ fontSize: '28px', marginBottom: '8px', fontWeight: '800', background: 'linear-gradient(90deg, #fff, #a0a0a0)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>노래 만들기 요청 작성</h2>
+                    <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Lock size={14} style={{ color: 'var(--primary-color)' }} /> 작성하신 내용은 본인과 관리자만 볼 수 있는 1:1 비밀글입니다.
+                    </p>
                     <form onSubmit={handleSongRequestSubmit}>
-                      <div className="form-group">
-                        <label>제목</label>
+                      <div className="form-group" style={{ marginBottom: '24px' }}>
+                        <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', fontWeight: '600', color: '#eaeaea' }}>제목</label>
                         <input 
                           type="text" 
                           required 
                           value={songRequestForm.title}
                           onChange={e => setSongRequestForm({...songRequestForm, title: e.target.value})}
                           placeholder="원하시는 곡의 제목이나 주제를 적어주세요."
+                          style={{
+                            width: '100%',
+                            padding: '16px 20px',
+                            fontSize: '16px',
+                            background: 'rgba(0, 0, 0, 0.3)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            borderRadius: '12px',
+                            color: '#fff',
+                            outline: 'none',
+                            transition: 'all 0.3s ease',
+                            boxSizing: 'border-box'
+                          }}
+                          onFocus={e => e.target.style.borderColor = 'var(--primary-color)'}
+                          onBlur={e => e.target.style.borderColor = 'rgba(255, 255, 255, 0.1)'}
                         />
                       </div>
-                      <div className="form-group">
-                        <label>요청 내용</label>
+                      <div className="form-group" style={{ marginBottom: '32px' }}>
+                        <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', fontWeight: '600', color: '#eaeaea' }}>요청 내용</label>
                         <textarea 
                           required 
-                          rows="15"
+                          rows="20"
                           value={songRequestForm.content}
                           onChange={e => setSongRequestForm({...songRequestForm, content: e.target.value})}
+                          style={{
+                            width: '100%',
+                            padding: '20px',
+                            fontSize: '15px',
+                            lineHeight: '1.8',
+                            background: 'rgba(0, 0, 0, 0.3)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            borderRadius: '12px',
+                            color: '#fff',
+                            outline: 'none',
+                            resize: 'vertical',
+                            transition: 'all 0.3s ease',
+                            boxSizing: 'border-box',
+                            fontFamily: 'inherit'
+                          }}
+                          onFocus={e => e.target.style.borderColor = 'var(--primary-color)'}
+                          onBlur={e => e.target.style.borderColor = 'rgba(255, 255, 255, 0.1)'}
                         ></textarea>
                       </div>
                       
-                      <div className="form-actions" style={{ display: 'flex', gap: '16px', marginTop: '24px' }}>
-                        <button type="submit" className="btn-primary-glow">등록하기</button>
-                        <button type="button" className="btn-secondary" onClick={() => setSongRequestView('list')}>취소</button>
+                      <div className="form-actions" style={{ display: 'flex', gap: '16px', justifyContent: 'flex-end' }}>
+                        <button type="button" className="btn-secondary" onClick={() => setSongRequestView('list')} style={{ padding: '14px 28px', fontSize: '15px', borderRadius: '12px' }}>취소</button>
+                        <button type="submit" className="btn-primary-glow" style={{ padding: '14px 32px', fontSize: '15px', borderRadius: '12px', fontWeight: 'bold' }}>등록하기</button>
                       </div>
                     </form>
                   </div>
