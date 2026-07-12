@@ -56,6 +56,15 @@ function MainApp() {
   const [userSession, setUserSession] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
 
+  const requireLogin = () => {
+    if (!userSession) {
+      showToast('로그인이 필요한 서비스입니다. 구글 로그인을 진행해 주세요.');
+      return false;
+    }
+    return true;
+  };
+
+
   // Navigation & Views
   const [currentView, setCurrentView] = useState('home'); // 'home', 'search', 'playlists', 'admin'
   const [selectedPlaylist, setSelectedPlaylist] = useState(null); // 특정 플레이리스트 선택 시 저장
@@ -1585,7 +1594,7 @@ function MainApp() {
           <li>
             <div 
               className={`nav-item ${currentView === 'board' ? 'active' : ''}`}
-              onClick={() => { setCurrentView('board'); setSelectedPlaylist(null); closeMobileMenu(); }}
+              onClick={() => { if (requireLogin()) { setCurrentView('board'); setSelectedPlaylist(null); closeMobileMenu(); } }}
             >
               <MessageSquare className="icon" />
               <span>자유게시판</span>

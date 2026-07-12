@@ -445,9 +445,13 @@ app.get('/api/songs/liked/:sessionId', async (req, res) => {
 // 7. 플레이리스트 전체 조회 (GET /api/playlists)
 app.get('/api/playlists', async (req, res) => {
   try {
+    const { userId } = req.query;
+    if (!userId) return res.json([]);
+
     const { data: playlists, error } = await supabase
       .from('playlists')
       .select('*')
+      .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -461,12 +465,12 @@ app.get('/api/playlists', async (req, res) => {
 // 8. 플레이리스트 생성 (POST /api/playlists)
 app.post('/api/playlists', async (req, res) => {
   try {
-    const { name, description } = req.body;
-    if (!name) return res.status(400).json({ error: '플레이리스트 이름은 필수입니다.' });
+    const { name, description, userId } = req.body;
+    if (!name || !userId) return res.status(400).json({ error: '이름과 userId는 필수입니다.' });
 
     const { data: newPlaylist, error } = await supabase
       .from('playlists')
-      .insert([{ name, description }])
+      .insert([{ name, description, user_id: userId }])
       .select()
       .single();
 
