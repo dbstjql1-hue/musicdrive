@@ -14,7 +14,7 @@ jobs:
         uses: cloudtype-github-actions/deploy@v1
         with:
           token: ${{ secrets.CLOUDTYPE_TOKEN }}
-          project: dbstjql1-hue/musicdrive
+          project: dbstjql1/musicdrive
           stage: main
           yaml: |
             name: musicdrive-backend
