@@ -1632,7 +1632,7 @@ function MainApp() {
                 <button 
                   className="btn-secondary" 
                   style={{ width: '100%', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-                  onClick={() => { navigate('/admin'); closeMobileMenu(); }}
+                  onClick={() => { setCurrentView('admin'); closeMobileMenu(); }}
                 >
                   <Settings size={16} />
                   어드민 설정
