@@ -942,21 +942,10 @@ function MainApp() {
 
   async function fetchSongs(query = '', category = '') {
     try {
-      const url = `${import.meta.env.BASE_URL}data/songs.json`;
+      const url = `${API_BASE_URL}/api/songs?query=${encodeURIComponent(query)}&category=${encodeURIComponent(category)}`;
       const res = await fetch(url);
       if (res.ok) {
         let data = await res.json();
-        
-        // 검색 필터 적용
-        if (query) {
-          const lowerQuery = query.toLowerCase();
-          data = data.filter(s => s.title.toLowerCase().includes(lowerQuery) || s.artist.toLowerCase().includes(lowerQuery));
-        }
-        
-        // 카테고리 필터 적용
-        if (category && category !== '전체') {
-          data = data.filter(s => s.category === category);
-        }
         
         // 깃허브 페이지 호환성(BASE_URL)을 위한 미디어 경로 재설정
         const baseUrl = import.meta.env.BASE_URL;
