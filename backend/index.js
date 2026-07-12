@@ -1270,13 +1270,22 @@ app.get('/api/admin/stats', async (req, res) => {
 // 1. 요청 목록 조회 (내용 제외, 제목만 반환)
 app.get('/api/song-requests', async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { data: requests, error } = await supabase
       .from('song_requests')
-      .select('id, title, user_id, created_at, profiles(email)')
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    res.json(data);
+    
+    let result = requests;
+    if (requests.length > 0) {
+      const userIds = [...new Set(requests.map(r => r.user_id))];
+      const { data: profiles } = await supabase.from('profiles').select('id, email, role').in('id', userIds);
+      const profileMap = {};
+      if (profiles) profiles.forEach(p => profileMap[p.id] = p);
+      result = requests.map(r => ({ ...r, profiles: profileMap[r.user_id] || null }));
+    }
+    res.json(result);
   } catch (err) {
     console.error('요청 목록 조회 오류:', err.message);
     res.status(500).json({ error: '목록을 불러올 수 없습니다.' });
@@ -1298,7 +1307,7 @@ app.get('/api/song-requests/:id', async (req, res) => {
     // 게시글 조회
     const { data: request, error: reqErr } = await supabase
       .from('song_requests')
-      .select('*, profiles(email)')
+      .select('*')
       .eq('id', id)
       .single();
 
@@ -1312,13 +1321,27 @@ app.get('/api/song-requests/:id', async (req, res) => {
     // 댓글 조회
     const { data: comments, error: comErr } = await supabase
       .from('song_request_comments')
-      .select('*, profiles(email, role)')
+      .select('*')
       .eq('request_id', id)
       .order('created_at', { ascending: true });
 
     if (comErr) throw comErr;
 
-    res.json({ ...request, comments: comments || [] });
+    // 수동 Join
+    const userIds = new Set([request.user_id]);
+    if (comments) comments.forEach(c => userIds.add(c.user_id));
+    
+    const { data: profiles } = await supabase.from('profiles').select('id, email, role').in('id', Array.from(userIds));
+    const profileMap = {};
+    if (profiles) profiles.forEach(p => profileMap[p.id] = p);
+    
+    request.profiles = profileMap[request.user_id] || null;
+    let mappedComments = [];
+    if (comments) {
+      mappedComments = comments.map(c => ({ ...c, profiles: profileMap[c.user_id] || null }));
+    }
+
+    res.json({ ...request, comments: mappedComments });
   } catch (err) {
     console.error('요청 상세 조회 오류:', err.message);
     res.status(500).json({ error: '상세 내용을 불러올 수 없습니다.' });
