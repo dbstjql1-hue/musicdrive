@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from './supabaseClient';
 import {
   Home,
   Search,
@@ -168,41 +167,22 @@ function MainApp() {
   // Toast UI
   const [toastMessage, setToastMessage] = useState('');
 
-  // Supabase Auth
+  // Supabase Auth (정적 모드 전환으로 인한 기능 제거)
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUserSession(session);
-      if (session) fetchUserProfile(session.user.id);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUserSession(session);
-      if (session) {
-        fetchUserProfile(session.user.id);
-      } else {
-        setUserProfile(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    // Auth 로직 무효화
   }, []);
 
   const fetchUserProfile = async (userId) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (data) setUserProfile(data);
+    // 프로필 로딩 로직 무효화
   };
 
   const handleGoogleLogin = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin,
-      }
-    });
+    showToast('정적 모드에서는 로그인 기능을 지원하지 않습니다.');
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    setUserSession(null);
+    setUserProfile(null);
   };
   
   // HTML Audio Ref
@@ -744,19 +724,49 @@ function MainApp() {
 
   async function fetchSongs(query = '', category = '') {
     try {
-      let url = `${API_BASE_URL}/api/songs`;
-      const params = [];
-      if (query) params.push(`query=${encodeURIComponent(query)}`);
-      if (category && category !== '전체') params.push(`category=${encodeURIComponent(category)}`);
-      if (params.length > 0) url += `?${params.join('&')}`;
-
+      const url = `${import.meta.env.BASE_URL}data/songs.json`;
       const res = await fetch(url);
       if (res.ok) {
-        const data = await res.json();
+        let data = await res.json();
+        
+        // 검색 필터 적용
+        if (query) {
+          const lowerQuery = query.toLowerCase();
+          data = data.filter(s => s.title.toLowerCase().includes(lowerQuery) || s.artist.toLowerCase().includes(lowerQuery));
+        }
+        
+        // 카테고리 필터 적용
+        if (category && category !== '전체') {
+          data = data.filter(s => s.category === category);
+        }
+        
+        // 깃허브 페이지 호환성(BASE_URL)을 위한 미디어 경로 재설정
+        const baseUrl = import.meta.env.BASE_URL;
+        data = data.map(s => {
+          // DB의 /songs/...wav 형태를 BASE_URL/songs/... 로 치환
+          const processUrl = (path) => {
+            if (!path) return '';
+            if (path.startsWith('http')) return path; // 이미 절대 URL인 경우 그대로
+            if (path.startsWith('/')) {
+              // baseUrl이 '/'일 경우 중복 슬래시 방지
+              const b = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+              return b + path;
+            }
+            return path;
+          };
+          
+          return {
+            ...s,
+            audio_url: processUrl(s.audio_url),
+            cover_url: processUrl(s.cover_url)
+          };
+        });
+
         setSongs(data);
       }
     } catch (err) {
       console.error('음원 가져오기 오류:', err);
+      showToast('정적 데이터 파일을 불러오지 못했습니다.');
     }
   }
 
