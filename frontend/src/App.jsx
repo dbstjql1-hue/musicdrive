@@ -1607,11 +1607,15 @@ function MainApp() {
           {userSession ? (
             <div className="user-profile">
               <div className="user-info" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                <div className="user-avatar" style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#333', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <User size={16} />
+                <div className="user-avatar" style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#333', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                  {userSession.user.user_metadata?.avatar_url ? (
+                    <img src={userSession.user.user_metadata.avatar_url} alt="profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <User size={16} />
+                  )}
                 </div>
-                <div style={{ fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {userSession.user.email}
+                <div style={{ fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: '500' }}>
+                  {userSession.user.user_metadata?.full_name || userSession.user.user_metadata?.name || userSession.user.email.split('@')[0]}
                 </div>
               </div>
               
