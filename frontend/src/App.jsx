@@ -38,8 +38,10 @@ import {
 } from 'lucide-react';
 import { PoemAnimation } from './components/ui/3d-animation';
 import { AdminWorkspace } from './components/AdminWorkspace';
+import { GenreHeroVideo } from './components/GenreHeroVideo';
 import './App.css';
 import mascotImg from './assets/mascot.png';
+import { getGenreHeroVideo } from './config/genreHeroVideos';
 import { supabase } from './supabaseClient';
 import { trackActivity } from './analytics';
 import {
@@ -1967,6 +1969,8 @@ function MainApp() {
 
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
+  const activeGenreHeroVideo = getGenreHeroVideo(activeSong?.category);
+
   return (
     <div className="app-container">
       {/* Toast 알림 표시 */}
@@ -2203,7 +2207,15 @@ function MainApp() {
                       </button>
                     )}
                   </div>
-                  <div className="hero-mascot-bg" style={{ backgroundImage: `url(${mascotImg})` }}></div>
+                  {activeGenreHeroVideo ? (
+                    <GenreHeroVideo
+                      key={activeGenreHeroVideo.src}
+                      media={activeGenreHeroVideo}
+                      isPlaying={isPlaying}
+                    />
+                  ) : (
+                    <div className="hero-mascot-bg" style={{ backgroundImage: `url(${mascotImg})` }}></div>
+                  )}
                 </div>
 
                 {/* 카테고리 필터 */}
