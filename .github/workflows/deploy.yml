@@ -21,6 +21,7 @@ jobs:
             app: node
             options:
               nodeversion: 18
+              ports: 5000
               start: npm start
               env:
                 - name: SUPABASE_URL
@@ -29,6 +30,8 @@ jobs:
                   secret: SUPABASE_SERVICE_ROLE_KEY
                 - name: ADMIN_PASSWORD
                   secret: ADMIN_PASSWORD
+                - name: CORS_ORIGINS
+                  value: https://musicdrive.kro.kr
             context:
               git:
                 url: https://github.com/${{ github.repository }}.git
