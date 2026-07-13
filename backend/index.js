@@ -10,8 +10,46 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // 미들웨어 설정
-app.use(cors());
+const configuredCorsOrigins = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+const allowedCorsOrigins = new Set([
+  'https://musicdrive.kro.kr',
+  'https://www.musicdrive.kro.kr',
+  ...configuredCorsOrigins
+]);
+
+function isAllowedCorsOrigin(origin) {
+  if (!origin || allowedCorsOrigins.has(origin)) return true;
+
+  try {
+    const { protocol, hostname } = new URL(origin);
+    const isLocalDevelopment = protocol === 'http:'
+      && (hostname === 'localhost' || hostname === '127.0.0.1');
+    const isVercelPreview = protocol === 'https:' && hostname.endsWith('.vercel.app');
+    return isLocalDevelopment || isVercelPreview;
+  } catch {
+    return false;
+  }
+}
+
+const corsOptions = {
+  origin(origin, callback) {
+    callback(null, isAllowedCorsOrigin(origin));
+  },
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Admin-Password'],
+  maxAge: 86400
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
+
+app.get('/api/health', (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ status: 'ok', service: 'musicdrive-api' });
+});
 
 // Supabase 연결 설정
 const supabaseUrl = process.env.SUPABASE_URL;

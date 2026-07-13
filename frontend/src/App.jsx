@@ -42,6 +42,12 @@ import './App.css';
 import mascotImg from './assets/mascot.png';
 import { supabase } from './supabaseClient';
 import { trackActivity } from './analytics';
+import {
+  API_BASE_URL,
+  apiFetch,
+  getApiRetryDelay,
+  isApiUnavailableError,
+} from './apiClient';
 
 // API Base URL (Vercel 배포 시 환경 변수 설정 권장)
 
@@ -63,7 +69,6 @@ const SONG_REQUEST_TEMPLATE = `곡 주제 및 제목
 
 ( 넣고싶은  가사나 이야기들을 써주시면 됩니다 )`;
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/+$/, '');
 const NEW_RELEASE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 
 // 브라우저 로컬 저장소 세션 ID 로드 또는 생성 (좋아요 중복 방지용)
@@ -73,9 +78,24 @@ if (!sessionId) {
   localStorage.setItem('musicdrive_session_id', sessionId);
 }
 
+function clearAuthCallbackUrl() {
+  const url = new URL(window.location.href);
+  const hashParams = new URLSearchParams(window.location.hash.slice(1));
+  const hasAuthHash = hashParams.has('access_token') || hashParams.has('error');
+  const authQueryParams = ['code', 'error', 'error_code', 'error_description'];
+  const hasAuthQuery = authQueryParams.some((name) => url.searchParams.has(name));
+
+  if (hasAuthHash || hasAuthQuery) {
+    authQueryParams.forEach((name) => url.searchParams.delete(name));
+    url.hash = '';
+    window.history.replaceState(null, '', `${url.pathname}${url.search}`);
+  }
+}
+
 function MainApp() {
   const [userSession, setUserSession] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
   const requireLogin = () => {
     if (!userSession) {
@@ -89,7 +109,10 @@ function MainApp() {
   // Navigation & Views
   const [currentView, setCurrentView] = useState('home'); // 'home', 'search', 'playlists', 'admin'
   const [selectedPlaylist, setSelectedPlaylist] = useState(null); // 특정 플레이리스트 선택 시 저장
-  const [showIntro, setShowIntro] = useState(!window.location.hash.includes('access_token'));
+  const [showIntro, setShowIntro] = useState(
+    !window.location.hash.includes('access_token')
+      && !new URLSearchParams(window.location.search).has('code')
+  );
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // Data State
@@ -229,15 +252,21 @@ function MainApp() {
   }, [userSession]);
 
   useEffect(() => {
+    let isMounted = true;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!isMounted) return;
       setUserSession(session);
       if (session) {
         fetchUserProfile(session.user.id);
         // 확실한 타이밍에 해시(토큰) 정리
-        if (window.location.hash.includes('access_token')) {
-          window.history.replaceState(null, '', window.location.pathname + window.location.search);
-        }
+        clearAuthCallbackUrl();
       }
+    }).catch((error) => {
+      if (import.meta.env.DEV) console.debug('Auth session restore skipped:', error);
+    }).finally(() => {
+      clearAuthCallbackUrl();
+      if (isMounted) setIsAuthReady(true);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -245,15 +274,16 @@ function MainApp() {
       if (session) {
         fetchUserProfile(session.user.id);
         // 로그인 성공 후 주소창에 남은 지저분한 해시(토큰) 값 정리
-        if (window.location.hash.includes('access_token')) {
-          window.history.replaceState(null, '', window.location.pathname + window.location.search);
-        }
+        clearAuthCallbackUrl();
       } else {
         setUserProfile(null);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const fetchUserProfile = async (userId) => {
@@ -530,7 +560,7 @@ function MainApp() {
     formData.append('adminPassword', adminPassword || 'admin1234');
     
     try {
-      const res = await fetch(`${API_BASE_URL}/api/songs/${activeSong.id}`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/songs/${activeSong.id}`, {
         method: 'PUT',
         body: formData
       });
@@ -559,7 +589,7 @@ function MainApp() {
 
   const verifyAdminForSync = async (passwordInput) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/verify`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/admin/verify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -657,6 +687,8 @@ function MainApp() {
 
   // 1. 초기 데이터 가져오기
   useEffect(() => {
+    if (!isAuthReady) return undefined;
+
     fetchSongs();
     fetchPlaylists();
     fetchLikedSongs();
@@ -669,25 +701,25 @@ function MainApp() {
         window.clearTimeout(songRecoveryTimerRef.current);
       }
     };
-  }, []);
+  }, [isAuthReady]);
 
 
   // 노래 만들기 관련 API
   const fetchSongRequests = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/song-requests`);
+      const res = await apiFetch(`${API_BASE_URL}/api/song-requests`);
       if (res.ok) {
         const data = await res.json();
         setSongRequests(data);
       }
     } catch (err) {
-      console.error(err);
+      if (!isApiUnavailableError(err)) console.error(err);
     }
   };
 
   const fetchSongRequestDetail = async (id) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/song-requests/${id}?userId=${userSession?.user?.id || ''}`);
+      const res = await apiFetch(`${API_BASE_URL}/api/song-requests/${id}?userId=${userSession?.user?.id || ''}`);
       const data = await res.json();
       if (res.ok) {
         setSelectedSongRequest(data);
@@ -717,7 +749,7 @@ function MainApp() {
     try {
       const isEdit = songRequestView === 'edit';
       const url = isEdit ? `${API_BASE_URL}/api/song-requests/${selectedSongRequest.id}` : `${API_BASE_URL}/api/song-requests`;
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: userSession?.user?.id, title: songRequestForm.title, content: songRequestForm.content })
@@ -738,7 +770,7 @@ function MainApp() {
   const handleDeleteSongRequest = async (id) => {
     if (!window.confirm('정말 삭제하시겠습니까?')) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/song-requests/${id}?userId=${userSession?.user?.id}`, { method: 'DELETE' });
+      const res = await apiFetch(`${API_BASE_URL}/api/song-requests/${id}?userId=${userSession?.user?.id}`, { method: 'DELETE' });
       if (res.ok) {
         showToast('삭제되었습니다.');
         setSongRequestView('list');
@@ -756,7 +788,7 @@ function MainApp() {
     e.preventDefault();
     if (!songRequestComment || !selectedSongRequest) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/song-requests/${selectedSongRequest.id}/comments`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/song-requests/${selectedSongRequest.id}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: userSession?.user?.id, content: songRequestComment })
@@ -775,25 +807,25 @@ function MainApp() {
 
   async function fetchBoardPosts() {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/board`);
+      const res = await apiFetch(`${API_BASE_URL}/api/board`);
       if (res.ok) {
         const data = await res.json();
         setBoardPosts(data);
       }
     } catch (err) {
-      console.error('게시글 가져오기 오류:', err);
+      if (!isApiUnavailableError(err)) console.error('게시글 가져오기 오류:', err);
     }
   }
 
   async function fetchVSMatches() {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/vs-matches?userId=${userSession?.user?.id || ''}`);
+      const res = await apiFetch(`${API_BASE_URL}/api/vs-matches?userId=${userSession?.user?.id || ''}`);
       if (res.ok) {
         const data = await res.json();
         setVsMatches(data);
       }
     } catch (err) {
-      console.error('VS 대결 가져오기 오류:', err);
+      if (!isApiUnavailableError(err)) console.error('VS 대결 가져오기 오류:', err);
     }
   };
 
@@ -810,7 +842,7 @@ function MainApp() {
 
     setIsCreatingVS(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/vs-matches`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/vs-matches`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -844,7 +876,7 @@ function MainApp() {
   const handleVSVote = async (matchId, songId) => {
     if (!requireLogin()) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/vs-matches/${matchId}/vote`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/vs-matches/${matchId}/vote`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -875,7 +907,7 @@ function MainApp() {
     if (!window.confirm('정말로 이 대결을 삭제하시겠습니까?')) return;
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/vs-matches/${matchId}`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/vs-matches/${matchId}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json'
@@ -916,7 +948,7 @@ function MainApp() {
 
     setIsUpdatingVS(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/vs-matches/${editingVsMatch.id}`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/vs-matches/${editingVsMatch.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -956,9 +988,13 @@ function MainApp() {
     };
     const scheduleRecovery = () => {
       clearRecoveryTimer();
+      const retryDelay = Math.max(
+        getApiRetryDelay(),
+        document.visibilityState === 'hidden' ? 30_000 : 5_000
+      );
       songRecoveryTimerRef.current = window.setTimeout(() => {
         fetchSongs(query, category);
-      }, 5000);
+      }, retryDelay);
     };
     const normalizeSongUrls = (songList) => songList.map(song => {
       const processUrl = (path) => {
@@ -989,12 +1025,9 @@ function MainApp() {
       });
     };
 
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 5000);
-
     try {
       const url = `${API_BASE_URL}/api/songs?query=${encodeURIComponent(query)}&category=${encodeURIComponent(category)}`;
-      const response = await fetch(url, { signal: controller.signal });
+      const response = await apiFetch(url, {}, { timeoutMs: 5_000 });
       if (!response.ok) throw new Error(`음원 API 응답 오류: ${response.status}`);
 
       const data = await response.json();
@@ -1004,7 +1037,9 @@ function MainApp() {
       songFallbackNoticeShownRef.current = false;
       clearRecoveryTimer();
     } catch (apiError) {
-      console.warn('음원 API 연결 실패, 정적 데이터로 전환합니다:', apiError);
+      if (import.meta.env.DEV && !isApiUnavailableError(apiError)) {
+        console.debug('Song API request failed; using static data.', apiError);
+      }
 
       try {
         const staticDataUrl = `${baseUrl}data/songs.json`;
@@ -1030,8 +1065,6 @@ function MainApp() {
         showToast('음원 목록을 불러오지 못했습니다. 백엔드 서버 상태를 확인해 주세요.');
         scheduleRecovery();
       }
-    } finally {
-      window.clearTimeout(timeoutId);
     }
   }
 
@@ -1050,7 +1083,7 @@ function MainApp() {
         method = 'PUT';
       }
 
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1077,7 +1110,7 @@ function MainApp() {
 
   const handleReadPost = async (post) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/board/${post.id}`);
+      const res = await apiFetch(`${API_BASE_URL}/api/board/${post.id}`);
       if (res.ok) {
         const data = await res.json();
         setActivePost(data);
@@ -1095,7 +1128,7 @@ function MainApp() {
     const pwd = window.prompt("게시글 비밀번호를 입력하세요:");
     if (!pwd) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/board/${id}`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/board/${id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: pwd })
@@ -1124,7 +1157,7 @@ function MainApp() {
 
   async function fetchBoardComments(postId) {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/board/${postId}/comments`);
+      const res = await apiFetch(`${API_BASE_URL}/api/board/${postId}/comments`);
       if (res.ok) {
         const data = await res.json();
         setBoardComments(data);
@@ -1141,7 +1174,7 @@ function MainApp() {
       return;
     }
     try {
-      const res = await fetch(`${API_BASE_URL}/api/board/${activePost.id}/comments`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/board/${activePost.id}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1170,7 +1203,7 @@ function MainApp() {
     const pwd = window.prompt("댓글 비밀번호를 입력하세요:");
     if (!pwd) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/board/comments/${commentId}`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/board/comments/${commentId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: pwd })
@@ -1192,25 +1225,25 @@ function MainApp() {
   async function fetchPlaylists() {
     if (!userSession?.user?.id) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/playlists?userId=${userSession.user.id}`);
+      const res = await apiFetch(`${API_BASE_URL}/api/playlists?userId=${userSession.user.id}`);
       if (res.ok) {
         const data = await res.json();
         setPlaylists(data);
       }
     } catch (err) {
-      console.error('플레이리스트 가져오기 오류:', err);
+      if (!isApiUnavailableError(err)) console.error('플레이리스트 가져오기 오류:', err);
     }
   };
 
   async function fetchLikedSongs() {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/songs/liked/${sessionId}`);
+      const res = await apiFetch(`${API_BASE_URL}/api/songs/liked/${sessionId}`);
       if (res.ok) {
         const data = await res.json();
         setLikedSongIds(data);
       }
     } catch (err) {
-      console.error('좋아요 목록 가져오기 오류:', err);
+      if (!isApiUnavailableError(err)) console.error('좋아요 목록 가져오기 오류:', err);
     }
   };
 
@@ -1264,7 +1297,7 @@ function MainApp() {
   // 4. API 인터랙션 함수들
   const incrementPlayCount = useCallback(async (songId) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/songs/${songId}/play`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/songs/${songId}/play`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1412,7 +1445,7 @@ function MainApp() {
   const toggleLike = async (e, songId) => {
     e.stopPropagation();
     try {
-      const res = await fetch(`${API_BASE_URL}/api/songs/${songId}/like`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/songs/${songId}/like`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId, userId: userSession?.user?.id })
@@ -1443,7 +1476,7 @@ function MainApp() {
     e.preventDefault();
     if (!newPlaylistName) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/playlists`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/playlists`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newPlaylistName, description: newPlaylistDesc, userId: userSession?.user?.id })
@@ -1467,7 +1500,7 @@ function MainApp() {
 
   const selectPlaylistToView = async (playlist) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/playlists/${playlist.id}/songs`);
+      const res = await apiFetch(`${API_BASE_URL}/api/playlists/${playlist.id}/songs`);
       if (res.ok) {
         const playlistSongs = await res.json();
         setSelectedPlaylist({ ...playlist, songs: playlistSongs });
@@ -1479,7 +1512,7 @@ function MainApp() {
 
   const addSongToPlaylist = async (playlistId, songId) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/songs`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/playlists/${playlistId}/songs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ songId, userId: userSession?.user?.id })
@@ -1505,7 +1538,7 @@ function MainApp() {
   const removeSongFromPlaylist = async (e, playlistId, songId) => {
     e.stopPropagation();
     try {
-      const res = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/songs/${songId}`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/playlists/${playlistId}/songs/${songId}`, {
         method: 'DELETE'
       });
       if (res.ok) {
@@ -1530,7 +1563,7 @@ function MainApp() {
   const fetchAdminStats = async () => {
     try {
       setAdminStats(null);
-      const res = await fetch(`${API_BASE_URL}/api/admin/stats`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/admin/stats`, {
         headers: { 'x-admin-password': adminPassword }
       });
       if (res.ok) {
@@ -1550,7 +1583,7 @@ function MainApp() {
   const fetchAdminVsStats = async () => {
     try {
       setAdminVsStats(null);
-      const res = await fetch(`${API_BASE_URL}/api/admin/vs-stats`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/admin/vs-stats`, {
         headers: { 'x-admin-password': adminPassword }
       });
       if (res.ok) {
@@ -1567,7 +1600,7 @@ function MainApp() {
 
   const fetchMembers = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/members`, {
+      const response = await apiFetch(`${API_BASE_URL}/api/admin/members`, {
         headers: { 'x-admin-password': adminPassword }
       });
       if (!response.ok) throw new Error('회원 목록 조회 실패');
@@ -1581,7 +1614,7 @@ function MainApp() {
   const toggleMemberRole = async (memberId, currentRole) => {
     const newRole = currentRole === 'admin' ? 'user' : 'admin';
     try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/members/${memberId}/role`, {
+      const response = await apiFetch(`${API_BASE_URL}/api/admin/members/${memberId}/role`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'x-admin-password': adminPassword },
         body: JSON.stringify({ role: newRole })
@@ -1599,7 +1632,7 @@ function MainApp() {
   // 미동기화 음원 조회
   const fetchUnsyncedSongs = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/unsynced-songs`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/admin/unsynced-songs`, {
         headers: { 'x-admin-password': adminPassword }
       });
       if (res.ok) {
@@ -1621,7 +1654,7 @@ function MainApp() {
     setSyncComplete(false);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/sync`, {
+      const response = await apiFetch(`${API_BASE_URL}/api/admin/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ adminPassword })
@@ -1681,7 +1714,7 @@ function MainApp() {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/verify`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/admin/verify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1739,7 +1772,7 @@ function MainApp() {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/songs`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/songs`, {
         method: 'POST',
         body: formData
       });
@@ -1782,7 +1815,7 @@ function MainApp() {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/verify`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/admin/verify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1839,7 +1872,7 @@ function MainApp() {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/songs/${editingSong.id}`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/songs/${editingSong.id}`, {
         method: 'PUT',
         body: formData
       });
@@ -1874,7 +1907,7 @@ function MainApp() {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/songs/${song.id}`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/songs/${song.id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json'
@@ -2908,7 +2941,7 @@ function MainApp() {
                                 onChange={async (e) => {
                                   const newStatus = e.target.value;
                                   try {
-                                    const res = await fetch(`${API_BASE_URL}/api/song-requests/${selectedSongRequest.id}`, {
+                                    const res = await apiFetch(`${API_BASE_URL}/api/song-requests/${selectedSongRequest.id}`, {
                                       method: 'PUT',
                                       headers: { 'Content-Type': 'application/json' },
                                       body: JSON.stringify({ userId: userSession?.user?.id, status: newStatus })

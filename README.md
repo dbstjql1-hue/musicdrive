@@ -88,7 +88,8 @@ musicdrive/
    - `SUPABASE_URL`: Supabase 프로젝트 URL
    - `SUPABASE_SERVICE_ROLE_KEY`: Supabase 서비스 롤 키
    - `ADMIN_PASSWORD`: 관리자 업로드용 비밀번호
-5. 배포 완료 후 제공되는 Cloudtype 백엔드 도메인 주소(예: `https://port-0-xxxx.cloudtype.app`)를 복사해둡니다.
+   - `CORS_ORIGINS`: 프런트 운영 도메인 (기본값: `https://musicdrive.kro.kr`)
+5. 배포 완료 후 제공되는 Cloudtype 백엔드 도메인 주소(예: `https://port-0-xxxx.cloudtype.app`)를 복사해둡니다. 브라우저에서 `<백엔드 주소>/api/health`가 JSON으로 응답하는지 확인합니다.
 
 ### 2. Frontend (Vercel) 배포
 

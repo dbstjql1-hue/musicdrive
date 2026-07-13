@@ -1,4 +1,4 @@
-const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/+$/, '');
+import { apiFetch, isApiUnavailableError } from './apiClient';
 
 export async function trackActivity(eventType, options = {}) {
   if (!eventType) return;
@@ -11,7 +11,7 @@ export async function trackActivity(eventType, options = {}) {
   } = options;
 
   try {
-    await fetch(`${API_BASE_URL}/api/activity`, {
+    await apiFetch('/api/activity', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -23,7 +23,7 @@ export async function trackActivity(eventType, options = {}) {
       })
     });
   } catch (err) {
-    if (import.meta.env.DEV) {
+    if (import.meta.env.DEV && !isApiUnavailableError(err)) {
       console.debug('Activity tracking skipped:', err);
     }
   }
