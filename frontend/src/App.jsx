@@ -64,6 +64,7 @@ const SONG_REQUEST_TEMPLATE = `곡 주제 및 제목
 ( 넣고싶은  가사나 이야기들을 써주시면 됩니다 )`;
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/+$/, '');
+const NEW_RELEASE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 
 // 브라우저 로컬 저장소 세션 ID 로드 또는 생성 (좋아요 중복 방지용)
 let sessionId = localStorage.getItem('musicdrive_session_id');
@@ -1909,6 +1910,11 @@ function MainApp() {
     <p>Welcome to <span>MusicDrive</span>, your ultimate destination for boundless melodies and rhythm. Dive into a world where every <span>beat</span> sparks a memory, every lyric tells a story, and every song brings us closer together. Feel the <span>harmony</span> flow through your veins. Press <span>Play</span>.&nbsp;&nbsp;&nbsp;&nbsp;Welcome to <span>MusicDrive</span>, your ultimate destination for boundless melodies and rhythm. Dive into a world where every <span>beat</span> sparks a memory, every lyric tells a story, and every song brings us closer together. Feel the <span>harmony</span> flow through your veins. Press <span>Play</span>.&nbsp;&nbsp;&nbsp;&nbsp;Welcome to <span>MusicDrive</span>, your ultimate destination for boundless melodies and rhythm. Dive into a world where every <span>beat</span> sparks a memory, every lyric tells a story, and every song brings us closer together. Feel the <span>harmony</span> flow through your veins. Press <span>Play</span>.&nbsp;&nbsp;&nbsp;&nbsp;Welcome to <span>MusicDrive</span>, your ultimate destination for boundless melodies and rhythm. Dive into a world where every <span>beat</span> sparks a memory, every lyric tells a story, and every song brings us closer together. Feel the <span>harmony</span> flow through your veins. Press <span>Play</span>.</p>
   `;
 
+  const newReleaseSongs = songs.filter(song => {
+    const registeredAt = Date.parse(song.created_at);
+    return Number.isFinite(registeredAt) && Date.now() - registeredAt <= NEW_RELEASE_WINDOW_MS;
+  });
+
   if (showIntro) {
     return (
       <PoemAnimation 
@@ -2255,12 +2261,12 @@ function MainApp() {
                   ))}
                 </div>
 
-                {/* 최근 등록 음원 그리드 */}
+                {/* 최근 2주 이내 신곡 그리드 */}
                 <div className="section-header">
-                  <h2>최신 등록 음원</h2>
+                  <h2>신곡 발표</h2>
                 </div>
                 <div className="song-grid">
-                  {songs.map(song => (
+                  {newReleaseSongs.map(song => (
                     <div className="song-card" key={song.id} onClick={() => playSingleSong(song)}>
                       <div className="card-img-container">
                         <img className="card-img" src={song.cover_url} alt={song.title} />
@@ -2294,9 +2300,9 @@ function MainApp() {
                       </div>
                     </div>
                   ))}
-                  {songs.length === 0 && (
+                  {newReleaseSongs.length === 0 && (
                     <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
-                      해당 카테고리에 등록된 음원이 없습니다.
+                      최근 2주 이내에 발표된 신곡이 없습니다.
                     </div>
                   )}
                 </div>
