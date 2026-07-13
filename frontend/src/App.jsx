@@ -94,6 +94,7 @@ function MainApp() {
   // Data State
   const [songs, setSongs] = useState([]);
   const songFallbackNoticeShownRef = useRef(false);
+  const songRecoveryTimerRef = useRef(null);
   const [playlists, setPlaylists] = useState([]);
   const [likedSongIds, setLikedSongIds] = useState([]);
   const [categories] = useState(['전체', '발라드', '댄스', '힙합', '케이팝', '펑크', '트로트', '재즈', '레트로', '레게', '디스코', '팝', 'EDM', 'OST', '기타']);
@@ -661,6 +662,12 @@ function MainApp() {
     fetchVSMatches();
     fetchBoardPosts();
     fetchSongRequests();
+
+    return () => {
+      if (songRecoveryTimerRef.current) {
+        window.clearTimeout(songRecoveryTimerRef.current);
+      }
+    };
   }, []);
 
 
@@ -940,6 +947,18 @@ function MainApp() {
 
   async function fetchSongs(query = '', category = '') {
     const baseUrl = import.meta.env.BASE_URL;
+    const clearRecoveryTimer = () => {
+      if (songRecoveryTimerRef.current) {
+        window.clearTimeout(songRecoveryTimerRef.current);
+        songRecoveryTimerRef.current = null;
+      }
+    };
+    const scheduleRecovery = () => {
+      clearRecoveryTimer();
+      songRecoveryTimerRef.current = window.setTimeout(() => {
+        fetchSongs(query, category);
+      }, 5000);
+    };
     const normalizeSongUrls = (songList) => songList.map(song => {
       const processUrl = (path) => {
         if (!path) return '';
@@ -982,6 +1001,7 @@ function MainApp() {
 
       setSongs(normalizeSongUrls(data));
       songFallbackNoticeShownRef.current = false;
+      clearRecoveryTimer();
     } catch (apiError) {
       console.warn('음원 API 연결 실패, 정적 데이터로 전환합니다:', apiError);
 
@@ -1002,10 +1022,12 @@ function MainApp() {
           showToast('서버 연결이 원활하지 않아 저장된 음원 목록을 표시합니다.');
           songFallbackNoticeShownRef.current = true;
         }
+        scheduleRecovery();
       } catch (fallbackError) {
         console.error('음원 목록과 정적 데이터 모두 불러오지 못했습니다:', fallbackError);
         setSongs([]);
         showToast('음원 목록을 불러오지 못했습니다. 백엔드 서버 상태를 확인해 주세요.');
+        scheduleRecovery();
       }
     } finally {
       window.clearTimeout(timeoutId);
