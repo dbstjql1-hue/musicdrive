@@ -1910,10 +1910,16 @@ function MainApp() {
     <p>Welcome to <span>MusicDrive</span>, your ultimate destination for boundless melodies and rhythm. Dive into a world where every <span>beat</span> sparks a memory, every lyric tells a story, and every song brings us closer together. Feel the <span>harmony</span> flow through your veins. Press <span>Play</span>.&nbsp;&nbsp;&nbsp;&nbsp;Welcome to <span>MusicDrive</span>, your ultimate destination for boundless melodies and rhythm. Dive into a world where every <span>beat</span> sparks a memory, every lyric tells a story, and every song brings us closer together. Feel the <span>harmony</span> flow through your veins. Press <span>Play</span>.&nbsp;&nbsp;&nbsp;&nbsp;Welcome to <span>MusicDrive</span>, your ultimate destination for boundless melodies and rhythm. Dive into a world where every <span>beat</span> sparks a memory, every lyric tells a story, and every song brings us closer together. Feel the <span>harmony</span> flow through your veins. Press <span>Play</span>.&nbsp;&nbsp;&nbsp;&nbsp;Welcome to <span>MusicDrive</span>, your ultimate destination for boundless melodies and rhythm. Dive into a world where every <span>beat</span> sparks a memory, every lyric tells a story, and every song brings us closer together. Feel the <span>harmony</span> flow through your veins. Press <span>Play</span>.</p>
   `;
 
-  const newReleaseSongs = songs.filter(song => {
-    const registeredAt = Date.parse(song.created_at);
-    return Number.isFinite(registeredAt) && Date.now() - registeredAt <= NEW_RELEASE_WINDOW_MS;
-  });
+  const songsByRegistrationDate = songs
+    .filter(song => Number.isFinite(Date.parse(song.created_at)))
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  const releasesFromLastTwoWeeks = songsByRegistrationDate.filter(song => (
+    Date.now() - Date.parse(song.created_at) <= NEW_RELEASE_WINDOW_MS
+  ));
+  const newReleaseSongs = songsByRegistrationDate.slice(
+    0,
+    Math.max(5, releasesFromLastTwoWeeks.length)
+  );
 
   if (showIntro) {
     return (
@@ -2263,7 +2269,7 @@ function MainApp() {
 
                 {/* 최근 2주 이내 신곡 그리드 */}
                 <div className="section-header">
-                  <h2>신곡 발표</h2>
+                  <h2>최근 등록 신곡</h2>
                 </div>
                 <div className="song-grid">
                   {newReleaseSongs.map(song => (
@@ -2302,7 +2308,7 @@ function MainApp() {
                   ))}
                   {newReleaseSongs.length === 0 && (
                     <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
-                      최근 2주 이내에 발표된 신곡이 없습니다.
+                      등록된 신곡이 없습니다.
                     </div>
                   )}
                 </div>
