@@ -3221,23 +3221,23 @@ function MainApp() {
         <div className="player-controls-container">
           <div className="controls-row">
             <button 
-              className={`control-btn ${isShuffled ? 'active' : ''}`}
+              className={`control-btn shuffle-btn ${isShuffled ? 'active' : ''}`}
               onClick={() => setIsShuffled(!isShuffled)}
               title="셔플"
             >
               <Shuffle size={16} />
             </button>
-            <button className="control-btn" onClick={handlePrevSong} title="이전 곡">
+            <button className="control-btn prev-btn" onClick={handlePrevSong} title="이전 곡">
               <SkipBack size={20} />
             </button>
-            <button className="play-pause-btn" onClick={handlePlayPause}>
+            <button className="play-pause-btn" onClick={handlePlayPause} aria-label={isPlaying ? '일시정지' : '재생'}>
               {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" style={{ marginLeft: '2px' }} />}
             </button>
-            <button className="control-btn" onClick={handleNextSong} title="다음 곡">
+            <button className="control-btn next-btn" onClick={handleNextSong} title="다음 곡">
               <SkipForward size={20} />
             </button>
             <button 
-              className={`control-btn ${isLooping ? 'active' : ''}`}
+              className={`control-btn repeat-btn ${isLooping ? 'active' : ''}`}
               onClick={() => setIsLooping(!isLooping)}
               title="반복"
             >
