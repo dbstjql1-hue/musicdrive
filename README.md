@@ -53,8 +53,12 @@ musicdrive/
    SUPABASE_URL=YOUR_SUPABASE_PROJECT_URL
    SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
    ADMIN_PASSWORD=admin1234
+   PUBLIC_SITE_URL=https://musicdrive.kro.kr
+   GITHUB_ASSET_SYNC_TOKEN=YOUR_FINE_GRAINED_GITHUB_TOKEN
+   GITHUB_REPOSITORY=dbstjql1-hue/musicdrive
+   GITHUB_BRANCH=main
    ```
-   > ⚠️ **주의**: `SUPABASE_SERVICE_ROLE_KEY`는 Storage에 직접 버퍼 파일을 업로드하기 위해 필수적이며 외부 노출을 금지해야 합니다. `ADMIN_PASSWORD`는 곡 업로드 시 사용하는 관리자용 인증 패스워드입니다.
+   > ⚠️ **주의**: `SUPABASE_SERVICE_ROLE_KEY`와 `GITHUB_ASSET_SYNC_TOKEN`은 백엔드에서만 사용하고 외부에 노출하지 마세요. GitHub 토큰은 이 저장소의 **Contents: Read and write** 권한만 부여한 fine-grained token을 사용합니다.
 3. 종속성을 설치하고 서버를 실행합니다:
    ```bash
    npm install
@@ -89,6 +93,10 @@ musicdrive/
    - `SUPABASE_SERVICE_ROLE_KEY`: Supabase 서비스 롤 키
    - `ADMIN_PASSWORD`: 관리자 업로드용 비밀번호
    - `CORS_ORIGINS`: 프런트 운영 도메인 (기본값: `https://musicdrive.kro.kr`)
+   - `PUBLIC_SITE_URL`: 배포 파일 확인에 사용할 프런트 운영 주소
+   - `GITHUB_ASSET_SYNC_TOKEN`: 저장소의 Contents 읽기/쓰기 권한을 가진 fine-grained GitHub token
+   - `GITHUB_REPOSITORY`: 자동으로 음원 파일을 반영할 저장소 (`dbstjql1-hue/musicdrive`)
+   - `GITHUB_BRANCH`: Vercel과 Cloudtype이 자동 배포하는 브랜치 (`main`)
 5. 배포 완료 후 제공되는 Cloudtype 백엔드 도메인 주소(예: `https://port-0-xxxx.cloudtype.app`)를 복사해둡니다. 브라우저에서 `<백엔드 주소>/api/health`가 JSON으로 응답하는지 확인합니다.
 
 ### 2. Frontend (Vercel) 배포
@@ -99,3 +107,15 @@ musicdrive/
 4. **Environment Variables**에 다음 값을 입력하고 배포합니다:
    - `VITE_API_URL`: 복사해 둔 Cloudtype 백엔드 도메인 주소 (슬래시 제외)
 5. 배포 완료된 Vercel 도메인을 통해 전세계 어디서든 음악을 감상할 수 있습니다.
+
+### 3. 음원 자동 동기화
+
+관리자 콘솔에서 음원을 등록하면 다음 작업이 자동으로 진행됩니다.
+
+1. 재생 중단을 방지하기 위해 음원과 커버를 먼저 Supabase Storage에 저장합니다.
+2. 백엔드가 GitHub 저장소의 `frontend/public/songs`, `frontend/public/covers`에 파일을 하나의 커밋으로 반영합니다.
+3. GitHub 푸시로 Vercel 배포가 시작됩니다.
+4. `PUBLIC_SITE_URL`에서 파일이 실제로 제공되는 것이 확인된 뒤 DB URL을 로컬 정적 경로로 변경합니다.
+5. DB 전환 성공 후 Supabase Storage 원본을 정리합니다.
+
+배포 확인 전에는 Supabase URL을 유지하므로 GitHub 또는 Vercel 작업이 지연되어도 음원 재생은 계속됩니다. 관리자 콘솔의 **지금 재시도**는 실패한 자동 게시를 즉시 다시 실행하며, 평상시에는 누를 필요가 없습니다. 기존 `sync.bat` 수동 작업도 더 이상 필요하지 않습니다.

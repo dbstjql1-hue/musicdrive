@@ -364,6 +364,7 @@ function MembersPanel({ members, stats, onToggleRole, onSelectUser }) {
 
 function SyncPanel({ data, isSyncing, logs, syncComplete, onRefresh, onRun, apiBaseUrl, adminPassword }) {
   if (!data) return <LoadingState label="스토리지와 로컬 자산을 진단하는 중입니다." />;
+  const automationEnabled = Boolean(data.automation?.enabled);
   const downloadAsset = async (bucket, fileName) => {
     const response = await fetch(`${apiBaseUrl}/api/admin/download-song/${bucket}/${encodeURIComponent(fileName)}`, {
       headers: { 'x-admin-password': adminPassword }
@@ -384,22 +385,25 @@ function SyncPanel({ data, isSyncing, logs, syncComplete, onRefresh, onRun, apiB
     <div className="admin-panel-stack">
       <div className={`admin-notice ${data.unsyncedCount > 0 ? 'admin-notice-warning' : 'admin-notice-success'}`}>
         {data.unsyncedCount > 0 ? <Database size={19} /> : <CheckCircle2 size={19} />}
-        <div><strong>{data.unsyncedCount > 0 ? `전환 대기 음원 ${data.unsyncedCount}곡` : '모든 음원이 동기화되었습니다.'}</strong><span>{data.readyCount > 0 ? `로컬 파일 검증이 끝난 ${data.readyCount}곡은 안전하게 반영할 수 있습니다.` : '로컬 파일이 확인된 경우에만 DB URL과 Storage 원본을 변경합니다.'}</span></div>
+        <div>
+          <strong>{data.unsyncedCount > 0 ? `${automationEnabled ? '자동 동기화 진행 중' : '전환 대기 음원'} ${data.unsyncedCount}곡` : '모든 음원이 동기화되었습니다.'}</strong>
+          <span>{data.unsyncedCount === 0 ? '정적 자산 전환과 Storage 정리가 완료되었습니다.' : (automationEnabled ? 'GitHub 배포와 운영 파일 확인 후 DB 전환 및 Storage 정리가 자동으로 완료됩니다.' : '서버의 GITHUB_ASSET_SYNC_TOKEN 설정이 필요합니다.')}</span>
+        </div>
       </div>
       <section className="admin-metric-grid admin-metric-grid-compact">
         <MetricCard icon={ListMusic} label="전체 음원" value={`${formatNumber(data.totalCount)}곡`} tone="blue" />
         <MetricCard icon={CheckCircle2} label="동기화 완료" value={`${formatNumber(data.syncedCount)}곡`} tone="green" />
-        <MetricCard icon={CloudDownload} label="전환 준비" value={`${formatNumber(data.readyCount)}곡`} tone="teal" />
+        <MetricCard icon={CloudDownload} label="자동 처리 대기" value={`${formatNumber(data.unsyncedCount)}곡`} tone="teal" />
         <MetricCard icon={Database} label="Storage 추정" value={`${formatNumber(data.estimatedSizeMB)}MB`} tone="amber" />
       </section>
       <section className="admin-section">
-        <div className="admin-section-heading"><div><span>Asset integrity</span><h2>동기화 대상 진단</h2></div><div className="admin-inline-actions"><button type="button" className="admin-icon-button" onClick={onRefresh} disabled={isSyncing} title="다시 검사"><RefreshCw size={17} /></button><button type="button" className="admin-primary-button" onClick={onRun} disabled={isSyncing || data.readyCount === 0}><Database size={17} />{isSyncing ? '검증 중' : '검증 완료 항목 반영'}</button></div></div>
-        <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>음원</th><th>오디오</th><th>커버</th><th>로컬 상태</th><th>등록일</th></tr></thead><tbody>
-          {(data.unsyncedSongs || []).map(song => <tr key={song.id}><td><strong>{song.title}</strong><small>{song.artist}</small></td><td>{song.audioFileName ? <button type="button" className="admin-download-link" onClick={() => downloadAsset('songs', song.audioFileName)}><CloudDownload size={14} />오디오</button> : '-'}</td><td>{song.coverFileName ? <button type="button" className="admin-download-link" onClick={() => downloadAsset('covers', song.coverFileName)}><CloudDownload size={14} />커버</button> : '-'}</td><td><span className={`admin-role ${song.readyToApply ? 'admin-role-ready' : 'admin-role-wait'}`}>{song.readyToApply ? '반영 가능' : '파일 준비 필요'}</span></td><td>{formatDate(song.created_at)}</td></tr>)}
+        <div className="admin-section-heading"><div><span>Asset integrity</span><h2>자동 동기화 상태</h2></div><div className="admin-inline-actions"><button type="button" className="admin-icon-button" onClick={onRefresh} disabled={isSyncing} title="다시 검사"><RefreshCw size={17} /></button><button type="button" className="admin-primary-button" onClick={onRun} disabled={isSyncing || data.unsyncedCount === 0}><Database size={17} />{isSyncing ? '재시도 중' : '지금 재시도'}</button></div></div>
+        <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>음원</th><th>오디오</th><th>커버</th><th>동기화 상태</th><th>등록일</th></tr></thead><tbody>
+          {(data.unsyncedSongs || []).map(song => <tr key={song.id}><td><strong>{song.title}</strong><small>{song.artist}</small></td><td>{song.audioFileName ? <button type="button" className="admin-download-link" onClick={() => downloadAsset('songs', song.audioFileName)}><CloudDownload size={14} />오디오</button> : '-'}</td><td>{song.coverFileName ? <button type="button" className="admin-download-link" onClick={() => downloadAsset('covers', song.coverFileName)}><CloudDownload size={14} />커버</button> : '-'}</td><td><span className={`admin-role ${song.syncState === 'ready' ? 'admin-role-ready' : 'admin-role-wait'}`}>{song.syncState === 'automatic_pending' ? '자동 배포 대기' : (song.syncState === 'ready' ? '자동 반영 대기' : '자동화 설정 필요')}</span></td><td>{formatDate(song.created_at)}</td></tr>)}
           {(data.unsyncedSongs || []).length === 0 && <tr><td colSpan="5"><EmptyState label="동기화 대기 음원이 없습니다." /></td></tr>}
         </tbody></table></div>
       </section>
-      {logs.length > 0 && <section className="admin-section"><div className="admin-section-heading"><div><span>Process log</span><h2>동기화 로그</h2></div></div><div className="admin-log" role="log">{logs.map((log, index) => <div className={`admin-log-${log.type}`} key={`${log.timestamp}-${index}`}><time>{formatDate(log.timestamp, true)}</time><span>{log.message}</span></div>)}</div>{syncComplete && <div className="admin-notice admin-notice-success"><CheckCircle2 size={18} /><span>검증된 항목의 반영이 완료되었습니다.</span></div>}</section>}
+      {logs.length > 0 && <section className="admin-section"><div className="admin-section-heading"><div><span>Process log</span><h2>동기화 로그</h2></div></div><div className="admin-log" role="log">{logs.map((log, index) => <div className={`admin-log-${log.type}`} key={`${log.timestamp}-${index}`}><time>{formatDate(log.timestamp, true)}</time><span>{log.message}</span></div>)}</div>{syncComplete && <div className="admin-notice admin-notice-success"><CheckCircle2 size={18} /><span>자동 게시 요청이 정상적으로 처리되었습니다.</span></div>}</section>}
     </div>
   );
 }

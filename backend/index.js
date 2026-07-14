@@ -4,6 +4,7 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
+const { createAssetSyncService } = require('./asset-sync');
 require('dotenv').config();
 
 const app = express();
@@ -110,6 +111,11 @@ function getLocalAssetPath(bucket, fileName) {
   const resolvedPath = path.resolve(baseDirectory, fileName);
   return resolvedPath.startsWith(`${baseDirectory}${path.sep}`) ? resolvedPath : null;
 }
+
+const assetSync = createAssetSyncService({
+  supabase,
+  getStorageFileName
+});
 
 async function recordActivity({ eventType, userId = null, sessionId = null, songId = null, metadata = {} }) {
   try {
@@ -310,8 +316,9 @@ app.post('/api/songs', upload, async (req, res) => {
 
     // 2) 앨범 커버 파일 업로드 (기본값 설정 제공)
     let coverUrl = 'https://images.unsplash.com/photo-1614680376593-902f74fa0d41?w=500&auto=format&fit=crop&q=60'; // 기본 플레이스홀더 이미지
+    let coverPath = null;
     if (coverFile) {
-      const coverPath = `${timestamp}_${cleanFileName(coverFile.originalname)}`;
+      coverPath = `${timestamp}_${cleanFileName(coverFile.originalname)}`;
       const { data: coverUpload, error: coverErr } = await supabase.storage
         .from('covers')
         .upload(coverPath, coverFile.buffer, {
@@ -351,7 +358,46 @@ app.post('/api/songs', upload, async (req, res) => {
 
     if (dbErr) throw dbErr;
 
-    res.status(201).json(newSong);
+    const syncStatus = assetSync.getStatus();
+    let autoSync = {
+      state: syncStatus.publishingConfigured ? 'queued' : 'configuration_required',
+      message: syncStatus.publishingConfigured
+        ? '정적 자산 자동 게시를 준비하고 있습니다.'
+        : 'GITHUB_ASSET_SYNC_TOKEN 설정 후 자동 게시가 시작됩니다.'
+    };
+
+    if (syncStatus.publishingConfigured) {
+      const filesToPublish = [
+        { path: `frontend/public/songs/${audioPath}`, buffer: audioFile.buffer },
+        coverFile && coverPath
+          ? { path: `frontend/public/covers/${coverPath}`, buffer: coverFile.buffer }
+          : null
+      ].filter(Boolean);
+
+      try {
+        const publishResult = await assetSync.publishFiles(
+          filesToPublish,
+          `sync: publish assets for ${title}`
+        );
+        assetSync.scheduleSoon();
+        autoSync = {
+          state: 'deploying',
+          message: publishResult.changed
+            ? 'GitHub 반영이 완료되어 배포 및 공개 확인을 기다리고 있습니다.'
+            : '정적 파일이 이미 반영되어 공개 확인을 기다리고 있습니다.',
+          commitSha: publishResult.commitSha
+        };
+      } catch (syncError) {
+        console.warn('[asset-sync] 업로드 직후 게시 실패, 정기 재시도 예정:', syncError.message);
+        autoSync = {
+          state: 'retrying',
+          message: '음원 등록은 완료되었으며 자동 동기화를 다시 시도합니다.'
+        };
+        assetSync.scheduleSoon(10_000);
+      }
+    }
+
+    res.status(201).json({ ...newSong, autoSync });
   } catch (err) {
     console.error('음원 등록 오류 상세:', err);
     res.status(500).json({ 
@@ -1911,6 +1957,7 @@ app.get('/api/admin/unsynced-songs', async (req, res) => {
     // Supabase Storage URL을 포함하는 곡 필터링
     const unsyncedSongs = [];
     const syncedSongs = [];
+    const automation = assetSync.getStatus();
 
     for (const song of songs) {
       const audioFileName = getStorageFileName(song.audio_url, 'songs');
@@ -1931,7 +1978,10 @@ app.get('/api/admin/unsynced-songs', async (req, res) => {
           coverFileName,
           localAudioReady,
           localCoverReady,
-          readyToApply: localAudioReady && localCoverReady
+          readyToApply: localAudioReady && localCoverReady,
+          syncState: automation.enabled
+            ? 'automatic_pending'
+            : (localAudioReady && localCoverReady ? 'ready' : 'configuration_required')
         });
       } else {
         syncedSongs.push(song);
@@ -1955,6 +2005,7 @@ app.get('/api/admin/unsynced-songs', async (req, res) => {
       syncedCount: syncedSongs.length,
       totalCount: songs.length,
       estimatedSizeMB: Math.round(estimatedSizeMB * 10) / 10,
+      automation,
       unsyncedSongs,
       syncedSongs
     });
@@ -1964,146 +2015,40 @@ app.get('/api/admin/unsynced-songs', async (req, res) => {
   }
 });
 
-// 2. 동기화 실행 - SSE 스트리밍 (POST /api/admin/sync)
+// 2. 자동 동기화 즉시 재시도 - SSE 스트리밍 (POST /api/admin/sync)
 app.post('/api/admin/sync', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*'
+  });
+
+  const sendEvent = (type, message, data = {}) => {
+    const event = JSON.stringify({ type, message, ...data, timestamp: new Date().toISOString() });
+    res.write(`data: ${event}\n\n`);
+  };
+
   try {
-    if (!requireAdmin(req, res)) return;
-
-    // SSE 헤더 설정
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*'
+    const result = await assetSync.runOnce({
+      publishMissing: true,
+      onEvent: sendEvent
     });
-
-    const sendEvent = (type, message, data = {}) => {
-      const event = JSON.stringify({ type, message, ...data, timestamp: new Date().toISOString() });
-      res.write(`data: ${event}\n\n`);
-    };
-
-    sendEvent('start', '동기화 검증을 시작합니다.');
-
-    // DB에서 미동기화 곡 조회
-    const { data: songs, error: fetchErr } = await supabase
-      .from('songs')
-      .select('*');
-
-    if (fetchErr) {
-      sendEvent('error', `데이터베이스 조회 실패: ${fetchErr.message}`);
-      sendEvent('done', '동기화가 실패로 종료되었습니다.', { success: false });
-      res.end();
-      return;
-    }
-
-    const unsyncedSongs = songs.filter(song =>
-      getStorageFileName(song.audio_url, 'songs') || getStorageFileName(song.cover_url, 'covers')
+    const success = result.waitingCount === 0 || Boolean(result.publishResult);
+    sendEvent(
+      'done',
+      result.waitingCount > 0
+        ? `자동 게시를 확인했습니다. 반영 ${result.finalizedCount}곡, 배포 대기 ${result.waitingCount}곡`
+        : `자동 동기화가 완료되었습니다. 반영 ${result.finalizedCount}곡`,
+      { success, ...result }
     );
-
-    sendEvent('info', `총 ${unsyncedSongs.length}곡의 전환 대상을 발견했습니다.`);
-
-    if (unsyncedSongs.length === 0) {
-      sendEvent('done', '모든 음원이 이미 동기화된 상태입니다.', { success: true, syncCount: 0, failCount: 0 });
-      res.end();
-      return;
-    }
-
-    let syncCount = 0;
-    let failCount = 0;
-
-    for (let i = 0; i < unsyncedSongs.length; i++) {
-      const song = unsyncedSongs[i];
-      sendEvent('progress', `[${i + 1}/${unsyncedSongs.length}] "${song.title}" 검증 중`, { current: i + 1, total: unsyncedSongs.length, songTitle: song.title });
-
-      try {
-        let newAudioUrl = song.audio_url;
-        let newCoverUrl = song.cover_url;
-        const audioPathInBucket = getStorageFileName(song.audio_url, 'songs');
-        const coverPathInBucket = getStorageFileName(song.cover_url, 'covers');
-        const localAudioPath = getLocalAssetPath('songs', audioPathInBucket);
-        const localCoverPath = getLocalAssetPath('covers', coverPathInBucket);
-        const missingAssets = [];
-
-        if (audioPathInBucket && (!localAudioPath || !fs.existsSync(localAudioPath))) missingAssets.push(`songs/${audioPathInBucket}`);
-        if (coverPathInBucket && (!localCoverPath || !fs.existsSync(localCoverPath))) missingAssets.push(`covers/${coverPathInBucket}`);
-
-        if (missingAssets.length > 0) {
-          sendEvent('warning', `[${song.title}] 로컬 파일이 없어 DB 전환을 건너뜁니다.`, { missingAssets });
-          failCount += 1;
-          continue;
-        }
-
-        // 오디오 URL 처리
-        if (audioPathInBucket) {
-          newAudioUrl = `/songs/${audioPathInBucket}`;
-          sendEvent('step', `오디오 로컬 파일 확인: ${audioPathInBucket}`);
-        }
-
-        // 커버 URL 처리
-        if (coverPathInBucket) {
-          newCoverUrl = `/covers/${coverPathInBucket}`;
-          sendEvent('step', `커버 로컬 파일 확인: ${coverPathInBucket}`);
-        }
-
-        // DB 업데이트
-        const { error: updateErr } = await supabase
-          .from('songs')
-          .update({
-            audio_url: newAudioUrl,
-            cover_url: newCoverUrl
-          })
-          .eq('id', song.id);
-
-        if (updateErr) {
-          sendEvent('error', `[${song.title}] DB 업데이트 실패: ${updateErr.message}`);
-          failCount++;
-          continue;
-        }
-        sendEvent('step', `[${song.title}] DB URL 업데이트 완료`);
-
-        // Supabase Storage 파일 삭제
-        if (audioPathInBucket) {
-          const { error: delErr } = await supabase.storage.from('songs').remove([audioPathInBucket]);
-          if (delErr) {
-            sendEvent('warning', `[${song.title}] 오디오 Storage 삭제 실패: ${delErr.message}`);
-          } else {
-            sendEvent('step', `[${song.title}] 오디오 Storage 원본 정리 완료`);
-          }
-        }
-
-        if (coverPathInBucket) {
-          const { error: delErr } = await supabase.storage.from('covers').remove([coverPathInBucket]);
-          if (delErr) {
-            sendEvent('warning', `[${song.title}] 커버 Storage 삭제 실패: ${delErr.message}`);
-          } else {
-            sendEvent('step', `[${song.title}] 커버 Storage 원본 정리 완료`);
-          }
-        }
-
-        syncCount++;
-        sendEvent('success', `[${song.title}] 동기화 완료`);
-      } catch (songErr) {
-        sendEvent('error', `[${song.title}] 처리 중 오류: ${songErr.message}`);
-        failCount++;
-      }
-    }
-
-    sendEvent('done', `동기화 검증 완료: 반영 ${syncCount}곡, 준비 필요 ${failCount}곡`, {
-      success: failCount === 0,
-      syncCount,
-      failCount
-    });
-
+  } catch (error) {
+    console.error('자동 동기화 오류:', error);
+    sendEvent('done', `자동 동기화 재시도 실패: ${error.message}`, { success: false });
+  } finally {
     res.end();
-  } catch (err) {
-    console.error('동기화 오류:', err);
-    try {
-      const event = JSON.stringify({ type: 'error', message: `동기화 처리 중 예기치 못한 오류: ${err.message}`, timestamp: new Date().toISOString() });
-      res.write(`data: ${event}\n\n`);
-      res.end();
-    } catch (e) {
-      res.status(500).end();
-    }
   }
 });
 
@@ -2145,4 +2090,11 @@ app.get('/api/admin/download-song/:bucket/:filename', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
+  const syncStatus = assetSync.getStatus();
+  console.log(
+    syncStatus.enabled
+      ? `[asset-sync] 자동 동기화 활성화: ${syncStatus.repository}@${syncStatus.branch}`
+      : '[asset-sync] 자동 게시 비활성화: GITHUB_ASSET_SYNC_TOKEN 환경변수를 확인해 주세요.'
+  );
+  assetSync.start();
 });

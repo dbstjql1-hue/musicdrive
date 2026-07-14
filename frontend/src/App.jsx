@@ -1882,7 +1882,13 @@ function MainApp() {
       });
       const data = await res.json();
       if (res.ok) {
-        showToast('새 음원이 성공적으로 등록되었습니다!');
+        if (data.autoSync?.state === 'configuration_required') {
+          showToast('음원은 등록되었지만 자동 동기화 서버 설정이 필요합니다.');
+        } else if (data.autoSync?.state === 'retrying') {
+          showToast('음원이 등록되었습니다. 자동 동기화를 다시 시도합니다.');
+        } else {
+          showToast('음원이 등록되었으며 자동 동기화가 시작되었습니다!');
+        }
         setUploadTitle('');
         setUploadArtist('');
         setUploadLyrics('');
