@@ -320,7 +320,6 @@ function MainApp() {
   // HTML Audio Ref
   const audioRef = useRef(new Audio());
   const lyricsBodyRef = useRef(null);
-  const sleepPopoverRef = useRef(null);
   const mobileLyricsListRef = useRef(null);
 
   // Fullscreen player helpers
@@ -353,7 +352,7 @@ function MainApp() {
   // 외부 클릭 시 자동 종료 타이머 팝오버 닫기
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (sleepPopoverRef.current && !sleepPopoverRef.current.contains(e.target)) {
+      if (!e.target.closest('.sleep-timer-container')) {
         setIsSleepPopoverOpen(false);
       }
     };
@@ -1418,6 +1417,21 @@ function MainApp() {
     
     const handleTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
+
+      if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
+        const mediaDuration = audio.duration;
+        if (Number.isFinite(mediaDuration) && mediaDuration > 0) {
+          try {
+            navigator.mediaSession.setPositionState({
+              duration: mediaDuration,
+              playbackRate: audio.playbackRate || 1,
+              position: Math.min(Math.max(audio.currentTime, 0), mediaDuration),
+            });
+          } catch {
+            // Some browsers expose Media Session without position-state support.
+          }
+        }
+      }
     };
     
     const handleLoadedMetadata = () => {
@@ -1433,16 +1447,104 @@ function MainApp() {
       }
     };
 
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
     audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('play', handlePlay);
+    audio.addEventListener('pause', handlePause);
 
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
       audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('play', handlePlay);
+      audio.removeEventListener('pause', handlePause);
     };
   }, [isLooping, handleNextSong]);
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+
+    if (!activeSong) {
+      navigator.mediaSession.metadata = null;
+      return;
+    }
+
+    if (!('MediaMetadata' in window)) return;
+
+    try {
+      navigator.mediaSession.metadata = new window.MediaMetadata({
+        title: activeSong.title || 'MusicDrive',
+        artist: activeSong.artist || '',
+        album: 'MusicDrive',
+        artwork: activeSong.cover_url ? [{ src: activeSong.cover_url }] : [],
+      });
+    } catch {
+      // Ignore invalid artwork URLs and partial Media Session implementations.
+    }
+  }, [activeSong]);
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+
+    try {
+      navigator.mediaSession.playbackState = activeSong
+        ? (isPlaying ? 'playing' : 'paused')
+        : 'none';
+    } catch {
+      // Ignore partial Media Session implementations.
+    }
+  }, [activeSong, isPlaying]);
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+
+    const audio = audioRef.current;
+    const actionHandlers = {
+      play: () => {
+        if (!audio.src) return;
+        audio.play().catch((error) => console.debug('Media Session play failed:', error));
+      },
+      pause: () => audio.pause(),
+      stop: () => {
+        audio.pause();
+        audio.currentTime = 0;
+      },
+      previoustrack: handlePrevSong,
+      nexttrack: handleNextSong,
+      seekbackward: ({ seekOffset } = {}) => {
+        audio.currentTime = Math.max(0, audio.currentTime - (seekOffset || 10));
+      },
+      seekforward: ({ seekOffset } = {}) => {
+        const end = Number.isFinite(audio.duration) ? audio.duration : audio.currentTime + 10;
+        audio.currentTime = Math.min(end, audio.currentTime + (seekOffset || 10));
+      },
+      seekto: ({ seekTime } = {}) => {
+        if (Number.isFinite(seekTime)) audio.currentTime = seekTime;
+      },
+    };
+
+    Object.entries(actionHandlers).forEach(([action, handler]) => {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch {
+        // Unsupported actions differ between browsers and connected devices.
+      }
+    });
+
+    return () => {
+      Object.keys(actionHandlers).forEach((action) => {
+        try {
+          navigator.mediaSession.setActionHandler(action, null);
+        } catch {
+          // Ignore unsupported cleanup actions.
+        }
+      });
+    };
+  }, [handleNextSong, handlePrevSong]);
 
   const toggleLike = async (e, songId) => {
     e.stopPropagation();
@@ -3281,6 +3383,33 @@ function MainApp() {
             <button className="control-btn next-btn" onClick={handleNextSong} title="다음 곡">
               <SkipForward size={20} />
             </button>
+            <div className="sleep-timer-container mobile-sleep-timer-container">
+              <button
+                className={`control-btn sleep-timer-btn ${sleepTimerMinutes !== null ? 'active' : ''}`}
+                onClick={() => setIsSleepPopoverOpen(!isSleepPopoverOpen)}
+                title="자동 종료 설정"
+                aria-label="자동 종료 타이머 설정"
+              >
+                <Clock size={18} />
+                {sleepTimerMinutes !== null && (
+                  <span className="sleep-badge">{formatSleepTime(sleepTimeLeft)}</span>
+                )}
+              </button>
+
+              {isSleepPopoverOpen && (
+                <div className="sleep-timer-popover">
+                  <div className="popover-title">자동 종료 설정</div>
+                  <div className="popover-item" onClick={() => handleSetSleepTimer(10)}>10분 뒤</div>
+                  <div className="popover-item" onClick={() => handleSetSleepTimer(30)}>30분 뒤</div>
+                  <div className="popover-item" onClick={() => handleSetSleepTimer(60)}>1시간 뒤</div>
+                  <div className="popover-item" onClick={() => handleSetSleepTimer(120)}>2시간 뒤</div>
+                  <div className="popover-item" onClick={() => handleSetSleepTimer(180)}>3시간 뒤</div>
+                  <div className="popover-item" onClick={() => handleSetSleepTimer(240)}>4시간 뒤</div>
+                  <div className="popover-divider"></div>
+                  <div className="popover-item disable" onClick={() => handleSetSleepTimer(null)}>설정 안 함</div>
+                </div>
+              )}
+            </div>
             <button 
               className={`control-btn repeat-btn ${isLooping ? 'active' : ''}`}
               onClick={() => setIsLooping(!isLooping)}
@@ -3317,7 +3446,7 @@ function MainApp() {
             <BookOpen size={18} />
           </button>
 
-          <div className="sleep-timer-container" ref={sleepPopoverRef} style={{ position: 'relative' }}>
+          <div className="sleep-timer-container" style={{ position: 'relative' }}>
             <button 
               className={`control-btn sleep-timer-btn ${sleepTimerMinutes !== null ? 'active' : ''}`}
               onClick={() => setIsSleepPopoverOpen(!isSleepPopoverOpen)}

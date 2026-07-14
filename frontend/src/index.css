@@ -852,6 +852,11 @@ body {
   align-items: center;
 }
 
+.mobile-sleep-timer-container {
+  display: none;
+  position: relative;
+}
+
 .sleep-timer-btn {
   position: relative;
   display: flex;
@@ -3106,6 +3111,16 @@ body {
   .controls-row .shuffle-btn,
   .controls-row .repeat-btn {
     display: none;
+  }
+
+  .controls-row .mobile-sleep-timer-container {
+    display: flex;
+  }
+
+  .mobile-sleep-timer-container .sleep-timer-popover {
+    right: 0;
+    bottom: 48px;
+    z-index: 110;
   }
 
   .play-pause-btn {
