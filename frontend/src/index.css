@@ -1346,6 +1346,357 @@ body {
 }
 
 /* ==========================================
+   Home Weekly VS
+   ========================================== */
+
+.home-weekly-vs {
+  position: relative;
+  margin: 34px 0 48px;
+  padding: 30px;
+  overflow: hidden;
+  border: 1px solid rgba(114, 9, 183, 0.38);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 50% -35%, rgba(247, 37, 133, 0.22), transparent 48%),
+    linear-gradient(135deg, rgba(18, 13, 29, 0.98), rgba(8, 11, 22, 0.98));
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.28);
+}
+
+.home-weekly-vs::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(110deg, rgba(157, 78, 221, 0.08), transparent 38%, rgba(58, 134, 200, 0.08));
+}
+
+.home-weekly-vs-header,
+.home-weekly-vs-arena,
+.home-weekly-vs-progress,
+.home-weekly-vs-summary {
+  position: relative;
+  z-index: 1;
+}
+
+.home-weekly-vs-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+
+.home-weekly-vs-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+  color: #f9a8d4;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.home-weekly-vs-header h2 {
+  margin: 0;
+  font-size: 24px;
+  letter-spacing: -0.6px;
+}
+
+.home-weekly-vs-header p {
+  margin: 7px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.home-weekly-vs-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.home-weekly-vs-period,
+.home-weekly-vs-actions > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.home-weekly-vs-actions > button {
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.home-weekly-vs-actions > button:hover {
+  border-color: rgba(247, 37, 133, 0.5);
+  background: rgba(247, 37, 133, 0.12);
+}
+
+.home-weekly-vs-arena {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 62px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 20px;
+}
+
+.home-weekly-vs-choice {
+  display: grid;
+  grid-template-columns: 138px minmax(0, 1fr);
+  align-items: center;
+  gap: 20px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.035);
+  transition: var(--transition);
+}
+
+.home-weekly-vs-choice.voted {
+  border-color: rgba(247, 37, 133, 0.58);
+  background: rgba(247, 37, 133, 0.075);
+  box-shadow: inset 0 0 28px rgba(247, 37, 133, 0.07);
+}
+
+.home-weekly-vs-cover {
+  position: relative;
+  width: 138px;
+  height: 138px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 14px;
+  background: #111;
+  cursor: pointer;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.32);
+}
+
+.home-weekly-vs-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.35s ease;
+}
+
+.home-weekly-vs-cover > span {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.36);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.home-weekly-vs-cover:hover img {
+  transform: scale(1.06);
+}
+
+.home-weekly-vs-cover:hover > span,
+.home-weekly-vs-cover:focus-visible > span {
+  opacity: 1;
+}
+
+.home-weekly-vs-song-info {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.home-weekly-vs-side {
+  margin-bottom: 8px;
+  color: #c4b5fd;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+}
+
+.home-weekly-vs-song-info strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-weekly-vs-song-info small {
+  margin-top: 5px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.home-weekly-vote-button {
+  min-height: 36px;
+  margin-top: 18px;
+  padding: 0 17px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.home-weekly-vote-button:hover,
+.home-weekly-vote-button.active {
+  border-color: transparent;
+  background: linear-gradient(135deg, #f72585, #7209b7);
+  box-shadow: 0 8px 22px rgba(247, 37, 133, 0.22);
+}
+
+.home-weekly-vs-mark {
+  align-self: center;
+  justify-self: center;
+  display: flex;
+  width: 56px;
+  height: 56px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f72585, #7209b7);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 900;
+  box-shadow: 0 0 30px rgba(247, 37, 133, 0.28);
+}
+
+.home-weekly-vs-progress {
+  display: flex;
+  height: 26px;
+  margin-top: 24px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.home-weekly-vs-progress span {
+  display: flex;
+  min-width: 38px;
+  align-items: center;
+  padding: 0 12px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  transition: width 0.5s ease;
+}
+
+.home-weekly-vs-progress .song-a {
+  justify-content: flex-start;
+  background: linear-gradient(90deg, #9d4edd, #f72585);
+}
+
+.home-weekly-vs-progress .song-b {
+  justify-content: flex-end;
+  background: linear-gradient(90deg, #3a86c8, #3f37c9);
+}
+
+.home-weekly-vs-summary {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 16px;
+  margin-top: 10px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.home-weekly-vs-summary span:last-child {
+  text-align: right;
+}
+
+.home-weekly-vs-summary strong {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .home-weekly-vs {
+    padding: 24px;
+  }
+
+  .home-weekly-vs-header {
+    flex-direction: column;
+  }
+
+  .home-weekly-vs-arena {
+    grid-template-columns: 1fr;
+  }
+
+  .home-weekly-vs-mark {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (max-width: 560px) {
+  .home-weekly-vs {
+    margin-top: 26px;
+    padding: 18px;
+    border-radius: 20px;
+  }
+
+  .home-weekly-vs-header h2 {
+    font-size: 21px;
+  }
+
+  .home-weekly-vs-actions {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .home-weekly-vs-actions > * {
+    justify-content: center;
+  }
+
+  .home-weekly-vs-choice {
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 14px;
+    padding: 13px;
+  }
+
+  .home-weekly-vs-cover {
+    width: 92px;
+    height: 92px;
+  }
+
+  .home-weekly-vs-song-info strong {
+    font-size: 15px;
+  }
+
+  .home-weekly-vote-button {
+    width: 100%;
+    margin-top: 12px;
+    padding: 0 10px;
+  }
+
+  .home-weekly-vs-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .home-weekly-vs-summary strong {
+    display: none;
+  }
+}
+
+/* ==========================================
    VS Match Page Styles
    ========================================== */
 

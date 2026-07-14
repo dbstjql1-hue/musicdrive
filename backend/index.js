@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { createAssetSyncService } = require('./asset-sync');
+const { selectWeeklyMatch } = require('./weekly-match');
 require('dotenv').config();
 
 const app = express();
@@ -923,7 +924,13 @@ app.get('/api/vs-matches', async (req, res) => {
       };
     }));
 
-    res.json(matchesWithVotes);
+    const weeklyMatch = selectWeeklyMatch(matchesWithVotes);
+    res.json(matchesWithVotes.map(match => ({
+      ...match,
+      is_weekly_featured: match.id === weeklyMatch.matchId,
+      weekly_starts_at: weeklyMatch.startAt,
+      weekly_ends_at: weeklyMatch.endAt
+    })));
   } catch (err) {
     console.error('VS 대결 목록 조회 오류:', err.message);
     res.status(500).json({ error: 'VS 대결 목록을 가져올 수 없습니다.' });

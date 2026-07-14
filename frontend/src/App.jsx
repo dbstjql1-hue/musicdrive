@@ -94,6 +94,19 @@ function clearAuthCallbackUrl() {
   }
 }
 
+function formatWeeklyMatchPeriod(startAt, endAt) {
+  const start = new Date(startAt);
+  const end = new Date(new Date(endAt).getTime() - 1);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '';
+
+  const formatter = new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    month: 'numeric',
+    day: 'numeric'
+  });
+  return `${formatter.format(start)} – ${formatter.format(end)}`;
+}
+
 function MainApp() {
   const [userSession, setUserSession] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
@@ -2063,6 +2076,17 @@ function MainApp() {
     0,
     Math.max(5, releasesFromLastTwoWeeks.length)
   );
+  const weeklyMatch = vsMatches.find(match => match.is_weekly_featured) || vsMatches[0] || null;
+  const weeklyTotalVotes = weeklyMatch
+    ? (weeklyMatch.song1_votes || 0) + (weeklyMatch.song2_votes || 0)
+    : 0;
+  const weeklySong1Pct = weeklyTotalVotes > 0
+    ? Math.round(((weeklyMatch?.song1_votes || 0) / weeklyTotalVotes) * 100)
+    : 50;
+  const weeklySong2Pct = 100 - weeklySong1Pct;
+  const weeklyPeriod = weeklyMatch
+    ? formatWeeklyMatchPeriod(weeklyMatch.weekly_starts_at, weeklyMatch.weekly_ends_at)
+    : '';
 
   if (showIntro) {
     return (
@@ -2465,6 +2489,71 @@ function MainApp() {
                     </div>
                   )}
                 </div>
+
+                {weeklyMatch && (
+                  <section className="home-weekly-vs" aria-labelledby="home-weekly-vs-title">
+                    <div className="home-weekly-vs-header">
+                      <div>
+                        <span className="home-weekly-vs-kicker"><Trophy size={15} /> Weekly music battle</span>
+                        <h2 id="home-weekly-vs-title">이번 주 곡 대결</h2>
+                        <p>{weeklyMatch.title}</p>
+                      </div>
+                      <div className="home-weekly-vs-actions">
+                        <span className="home-weekly-vs-period"><Clock size={14} />{weeklyPeriod}</span>
+                        <button type="button" onClick={() => setCurrentView('vs')}>전체 대결 보기</button>
+                      </div>
+                    </div>
+
+                    <div className="home-weekly-vs-arena">
+                      {[weeklyMatch.song1, weeklyMatch.song2].map((song, index) => {
+                        const songId = index === 0 ? weeklyMatch.song1_id : weeklyMatch.song2_id;
+                        const votes = index === 0 ? weeklyMatch.song1_votes : weeklyMatch.song2_votes;
+                        const isVoted = weeklyMatch.user_voted_song_id === songId;
+                        const isSongPlaying = activeSong?.id === songId && isPlaying;
+
+                        return (
+                          <div className={`home-weekly-vs-choice ${isVoted ? 'voted' : ''}`} key={songId}>
+                            <button
+                              type="button"
+                              className="home-weekly-vs-cover"
+                              onClick={() => playSingleSong(song)}
+                              aria-label={`${song?.title || '곡'} ${isSongPlaying ? '일시정지' : '재생'}`}
+                            >
+                              <img src={song?.cover_url} alt="" />
+                              <span>{isSongPlaying ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" />}</span>
+                            </button>
+                            <div className="home-weekly-vs-song-info">
+                              <span className="home-weekly-vs-side">{index === 0 ? 'A SIDE' : 'B SIDE'} · {votes || 0}표</span>
+                              <strong>{song?.title}</strong>
+                              <small>{song?.artist}</small>
+                              <button
+                                type="button"
+                                className={`home-weekly-vote-button ${isVoted ? 'active' : ''}`}
+                                onClick={() => handleVSVote(weeklyMatch.id, songId)}
+                              >
+                                {!userSession ? '로그인 후 투표' : (isVoted ? '선택 취소' : '이 곡에 투표')}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }).reduce((items, choice, index) => {
+                        if (index === 1) items.push(<div className="home-weekly-vs-mark" key="weekly-vs-mark">VS</div>);
+                        items.push(choice);
+                        return items;
+                      }, [])}
+                    </div>
+
+                    <div className="home-weekly-vs-progress" aria-label={`A곡 ${weeklySong1Pct}%, B곡 ${weeklySong2Pct}%`}>
+                      <span className="song-a" style={{ width: `${weeklySong1Pct}%` }}>{weeklySong1Pct}%</span>
+                      <span className="song-b" style={{ width: `${weeklySong2Pct}%` }}>{weeklySong2Pct}%</span>
+                    </div>
+                    <div className="home-weekly-vs-summary">
+                      <span>{weeklyMatch.song1?.title}</span>
+                      <strong>총 {weeklyTotalVotes}표 참여</strong>
+                      <span>{weeklyMatch.song2?.title}</span>
+                    </div>
+                  </section>
+                )}
               </div>
             )}
 
