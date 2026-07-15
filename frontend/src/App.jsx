@@ -39,6 +39,7 @@ import {
 import { PoemAnimation } from './components/ui/3d-animation';
 import { AdminWorkspace } from './components/AdminWorkspace';
 import { GenreHeroVideo } from './components/GenreHeroVideo';
+import { PersonalDashboard } from './components/PersonalDashboard';
 import './App.css';
 import mascotImg from './assets/mascot.png';
 import { getGenreHeroVideo } from './config/genreHeroVideos';
@@ -136,6 +137,9 @@ function MainApp() {
   const songRecoveryTimerRef = useRef(null);
   const [playlists, setPlaylists] = useState([]);
   const [likedSongIds, setLikedSongIds] = useState([]);
+  const [userDashboard, setUserDashboard] = useState(null);
+  const [isUserDashboardLoading, setIsUserDashboardLoading] = useState(false);
+  const [userDashboardError, setUserDashboardError] = useState('');
   const [categories] = useState(['전체', '발라드', '댄스', '힙합', '케이팝', '펑크', '트로트', '재즈', '레트로', '레게', '디스코', '팝', 'EDM', 'OST', '기타']);
   
   // Active Filter / Search
@@ -1249,6 +1253,38 @@ function MainApp() {
     }
   };
 
+  const fetchUserDashboard = useCallback(async () => {
+    const accessToken = userSession?.access_token;
+    if (!accessToken) {
+      setUserDashboard(null);
+      return;
+    }
+
+    setIsUserDashboardLoading(true);
+    setUserDashboardError('');
+
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/users/me/dashboard`, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || '현황판을 불러오지 못했습니다.');
+      setUserDashboard(data);
+    } catch (err) {
+      if (!isApiUnavailableError(err)) console.error('개인 현황판 조회 오류:', err);
+      setUserDashboardError('잠시 후 다시 시도해 주세요.');
+    } finally {
+      setIsUserDashboardLoading(false);
+    }
+  }, [userSession?.access_token]);
+
+  useEffect(() => {
+    if (currentView === 'playlists' && userSession?.access_token) {
+      fetchUserDashboard();
+    }
+  }, [currentView, fetchUserDashboard, userSession?.access_token]);
+
   async function fetchLikedSongs() {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/songs/liked/${sessionId}`);
@@ -1477,6 +1513,29 @@ function MainApp() {
       audio.removeEventListener('pause', handlePause);
     };
   }, [isLooping, handleNextSong]);
+
+  useEffect(() => {
+    if (!isPlaying || !activeSong?.id || !userSession?.user?.id) return undefined;
+
+    const intervalId = window.setInterval(() => {
+      trackActivity('listen_time', {
+        userId: userSession.user.id,
+        sessionId,
+        songId: activeSong.id,
+        metadata: { seconds: 30, source: currentView }
+      });
+
+      setUserDashboard(prev => prev ? {
+        ...prev,
+        summary: {
+          ...prev.summary,
+          totalListeningSeconds: (prev.summary?.totalListeningSeconds || 0) + 30
+        }
+      } : prev);
+    }, 30_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeSong?.id, currentView, isPlaying, userSession?.user?.id]);
 
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
@@ -2815,31 +2874,41 @@ function MainApp() {
 
             {/* 3. 플레이리스트 관리 화면 */}
             {currentView === 'playlists' && (
-              <div>
-                <div className="section-header">
-                  <h2>내 플레이리스트</h2>
-                  <button className="btn-primary-glow" onClick={() => setIsPlaylistModalOpen(true)}>
-                    <Plus size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
-                    신규 생성
-                  </button>
-                </div>
+              <div className="playlist-hub-layout">
+                <section className="playlist-library-panel">
+                  <div className="section-header">
+                    <h2>내 플레이리스트</h2>
+                    <button className="btn-primary-glow" onClick={() => setIsPlaylistModalOpen(true)}>
+                      <Plus size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
+                      신규 생성
+                    </button>
+                  </div>
 
-                <div className="playlist-grid">
-                  {playlists.map(pl => (
-                    <div className="playlist-card" key={pl.id} onClick={() => selectPlaylistToView(pl)}>
-                      <ListMusic className="playlist-folder-icon" />
-                      <div>
-                        <div className="playlist-name">{pl.name}</div>
-                        <div className="playlist-desc">{pl.description || '추가된 상세 설명 없음'}</div>
+                  <div className="playlist-grid">
+                    {playlists.map(pl => (
+                      <div className="playlist-card" key={pl.id} onClick={() => selectPlaylistToView(pl)}>
+                        <ListMusic className="playlist-folder-icon" />
+                        <div>
+                          <div className="playlist-name">{pl.name}</div>
+                          <div className="playlist-desc">{pl.description || '추가된 상세 설명 없음'}</div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                  {playlists.length === 0 && (
-                    <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '60px', color: 'var(--text-secondary)' }}>
-                      생성된 플레이리스트가 없습니다. 나만의 재생 목록을 생성하여 관리해 보세요!
-                    </div>
-                  )}
-                </div>
+                    ))}
+                    {playlists.length === 0 && (
+                      <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '60px 20px', color: 'var(--text-secondary)' }}>
+                        생성된 플레이리스트가 없습니다. 나만의 재생 목록을 생성하여 관리해 보세요!
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                <PersonalDashboard
+                  data={userDashboard}
+                  loading={isUserDashboardLoading}
+                  error={userDashboardError}
+                  onRetry={fetchUserDashboard}
+                  onPlaySong={playSingleSong}
+                />
               </div>
             )}
 

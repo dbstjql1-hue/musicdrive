@@ -6,6 +6,7 @@ const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { createAssetSyncService } = require('./asset-sync');
 const { selectWeeklyMatch } = require('./weekly-match');
+const { buildUserDashboard } = require('./user-dashboard');
 require('dotenv').config();
 
 const app = express();
@@ -75,6 +76,21 @@ function requireAdmin(req, res) {
   if (isAdminRequest(req)) return true;
   res.status(403).json({ error: '관리자 인증이 필요합니다.' });
   return false;
+}
+
+function getBearerToken(req) {
+  const authorization = String(req.headers.authorization || '');
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  return match?.[1] || null;
+}
+
+async function getAuthenticatedUser(req) {
+  const accessToken = getBearerToken(req);
+  if (!accessToken) return null;
+
+  const { data, error } = await supabase.auth.getUser(accessToken);
+  if (error || !data?.user) return null;
+  return data.user;
 }
 
 function toDateKey(value) {
@@ -265,6 +281,58 @@ app.post('/api/activity', async (req, res) => {
   } catch (err) {
     console.error('활동 이벤트 저장 오류:', err.message);
     res.status(500).json({ error: '활동 이벤트를 저장할 수 없습니다.' });
+  }
+});
+
+// Personal listening dashboard for the authenticated user.
+app.get('/api/users/me/dashboard', async (req, res) => {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
+      return res.status(401).json({ error: '로그인이 필요한 서비스입니다.' });
+    }
+
+    const [plays, songs, listenActivities] = await Promise.all([
+      safeFetch(
+        'personal play history',
+        supabase
+          .from('play_history')
+          .select('id, song_id, played_at')
+          .eq('user_id', user.id)
+          .order('played_at', { ascending: false })
+          .limit(10000),
+        []
+      ),
+      safeFetch(
+        'personal dashboard songs',
+        supabase
+          .from('songs')
+          .select('id, title, artist, category, cover_url, created_at')
+          .order('created_at', { ascending: false })
+          .limit(5000),
+        []
+      ),
+      safeFetch(
+        'personal listening time',
+        supabase
+          .from('user_activity')
+          .select('event_type, metadata, created_at')
+          .eq('user_id', user.id)
+          .eq('event_type', 'listen_time')
+          .order('created_at', { ascending: false })
+          .limit(10000),
+        []
+      )
+    ]);
+
+    res.set('Cache-Control', 'private, no-store');
+    res.json({
+      ...buildUserDashboard({ plays, songs, activities: listenActivities }),
+      generatedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('개인 현황판 조회 오류:', err.message);
+    res.status(500).json({ error: '개인 현황판을 불러올 수 없습니다.' });
   }
 });
 
