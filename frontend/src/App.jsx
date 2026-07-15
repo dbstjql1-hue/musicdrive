@@ -2290,10 +2290,6 @@ function MainApp() {
                       <div className="row-artist">{song.artist}</div>
                     </div>
                     <div className="row-meta">
-                      <div className="meta-item">
-                        <Play size={13} />
-                        {song.play_count || 0}
-                      </div>
                       <button 
                         className={`icon-btn ${likedSongIds.includes(song.id) ? 'liked' : ''}`}
                         onClick={(e) => toggleLike(e, song.id)}
