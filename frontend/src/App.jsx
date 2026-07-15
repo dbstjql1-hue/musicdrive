@@ -2583,6 +2583,16 @@ function MainApp() {
                 {/* 실시간 인기 트랙 */}
                 <div className="section-header">
                   <h2>인기 곡 목록</h2>
+                  <button
+                    type="button"
+                    className={`mobile-live-chat-launch ${isLiveChatOpen ? 'active' : ''}`}
+                    onClick={() => setIsLiveChatOpen(true)}
+                    aria-controls="musicdrive-live-chat"
+                    aria-expanded={isLiveChatOpen}
+                  >
+                    <MessageCircle size={15} />
+                    <span>{isLiveChatOpen ? '대화창 열림' : '실시간 대화'}</span>
+                  </button>
                 </div>
                 <div className="song-list-premium" style={{ maxHeight: '380px', overflowY: 'auto', paddingRight: '6px' }}>
                   {songs.slice().sort((a, b) => (b.play_count || 0) - (a.play_count || 0)).map((song, idx) => (

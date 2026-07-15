@@ -465,6 +465,10 @@ body {
   letter-spacing: -0.5px;
 }
 
+.mobile-live-chat-launch {
+  display: none;
+}
+
 /* Song Grid (Album view) */
 .song-grid {
   display: grid;
@@ -4462,6 +4466,30 @@ body {
 
   .section-header h2 {
     font-size: 21px;
+  }
+
+  .mobile-live-chat-launch {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 11px;
+    border: 1px solid rgba(192, 132, 252, 0.46);
+    border-radius: 999px;
+    color: #f3e8ff;
+    background: linear-gradient(135deg, rgba(126, 34, 206, 0.82), rgba(168, 85, 247, 0.72));
+    box-shadow: 0 7px 18px rgba(126, 34, 206, 0.26);
+    font-size: 11px;
+    font-weight: 800;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .mobile-live-chat-launch.active {
+    color: #d8b4fe;
+    background: rgba(126, 34, 206, 0.2);
+    box-shadow: none;
   }
 
   .song-row {

@@ -6,7 +6,8 @@ import { supabase } from '../supabaseClient';
 const CHAT_PANEL_WIDTH = 400;
 const CHAT_PANEL_HEIGHT = 560;
 const PLAYER_SAFE_SPACE = 104;
-const CHAT_OPACITY_STORAGE_KEY = 'musicdrive_chat_opacity_v2';
+const DESKTOP_CHAT_OPACITY_STORAGE_KEY = 'musicdrive_chat_opacity_desktop_v1';
+const MOBILE_CHAT_OPACITY_STORAGE_KEY = 'musicdrive_chat_opacity_mobile_v1';
 const EMOJI_CATEGORIES = [
   {
     id: 'faces',
@@ -114,8 +115,12 @@ function createPresenceNotice(eventType, presence, presenceKey) {
 }
 
 function getSavedOpacity() {
-  const saved = Number.parseInt(localStorage.getItem(CHAT_OPACITY_STORAGE_KEY) || '', 10);
-  return Number.isFinite(saved) ? Math.min(100, Math.max(15, saved)) : 18;
+  const isMobile = window.innerWidth <= 768;
+  const storageKey = isMobile
+    ? MOBILE_CHAT_OPACITY_STORAGE_KEY
+    : DESKTOP_CHAT_OPACITY_STORAGE_KEY;
+  const saved = Number.parseInt(localStorage.getItem(storageKey) || '', 10);
+  return Number.isFinite(saved) ? Math.min(100, Math.max(15, saved)) : (isMobile ? 40 : 18);
 }
 
 export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) {
@@ -234,7 +239,10 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(CHAT_OPACITY_STORAGE_KEY, String(chatOpacity));
+    const storageKey = window.innerWidth <= 768
+      ? MOBILE_CHAT_OPACITY_STORAGE_KEY
+      : DESKTOP_CHAT_OPACITY_STORAGE_KEY;
+    localStorage.setItem(storageKey, String(chatOpacity));
   }, [chatOpacity]);
 
   useEffect(() => {
