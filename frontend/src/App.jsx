@@ -40,6 +40,7 @@ import { PoemAnimation } from './components/ui/3d-animation';
 import { AdminWorkspace } from './components/AdminWorkspace';
 import { GenreHeroVideo } from './components/GenreHeroVideo';
 import { PersonalDashboard } from './components/PersonalDashboard';
+import { LiveChatPanel } from './components/LiveChatPanel';
 import './App.css';
 import mascotImg from './assets/mascot.png';
 import { getGenreHeroVideo } from './config/genreHeroVideos';
@@ -73,6 +74,32 @@ const SONG_REQUEST_TEMPLATE = `곡 주제 및 제목
 ( 넣고싶은  가사나 이야기들을 써주시면 됩니다 )`;
 
 const NEW_RELEASE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+const DAILY_AUTH_EXPIRY_KEY = 'musicdrive_daily_auth_expires_at';
+
+function getNextLocalMidnight(now = new Date()) {
+  return new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() + 1,
+    0,
+    0,
+    0,
+    0
+  ).getTime();
+}
+
+function getOrCreateDailyAuthExpiry() {
+  const savedExpiry = Number(localStorage.getItem(DAILY_AUTH_EXPIRY_KEY));
+  if (Number.isFinite(savedExpiry) && savedExpiry > 0) return savedExpiry;
+
+  const nextMidnight = getNextLocalMidnight();
+  localStorage.setItem(DAILY_AUTH_EXPIRY_KEY, String(nextMidnight));
+  return nextMidnight;
+}
+
+function clearDailyAuthExpiry() {
+  localStorage.removeItem(DAILY_AUTH_EXPIRY_KEY);
+}
 
 // 브라우저 로컬 저장소 세션 ID 로드 또는 생성 (좋아요 중복 방지용)
 let sessionId = localStorage.getItem('musicdrive_session_id');
@@ -259,6 +286,7 @@ function MainApp() {
   
   // Toast UI
   const [toastMessage, setToastMessage] = useState('');
+  const [isLiveChatOpen, setIsLiveChatOpen] = useState(true);
 
   // Supabase Auth (하이브리드 모드 - Auth 기능 복구)
 
@@ -273,11 +301,61 @@ function MainApp() {
 
   useEffect(() => {
     let isMounted = true;
+    let expiryTimerId = null;
+    let isExpirySignOutRunning = false;
+
+    const clearExpiryTimer = () => {
+      if (expiryTimerId !== null) {
+        window.clearTimeout(expiryTimerId);
+        expiryTimerId = null;
+      }
+    };
+
+    const signOutExpiredSession = async () => {
+      if (isExpirySignOutRunning) return;
+      isExpirySignOutRunning = true;
+      clearExpiryTimer();
+      try {
+        // 자정 만료는 현재 기기의 세션만 종료합니다.
+        const { error } = await supabase.auth.signOut({ scope: 'local' });
+        if (error) throw error;
+        clearDailyAuthExpiry();
+      } catch (error) {
+        // 실패 시 만료 시각을 남겨 두어 다음 포커스/새로고침 때 다시 종료합니다.
+        if (import.meta.env.DEV) console.debug('Daily auth expiry sign-out retry scheduled:', error);
+        expiryTimerId = window.setTimeout(signOutExpiredSession, 30_000);
+      } finally {
+        if (isMounted) {
+          setUserSession(null);
+          setUserProfile(null);
+        }
+        isExpirySignOutRunning = false;
+      }
+    };
+
+    const scheduleDailySessionExpiry = (session) => {
+      clearExpiryTimer();
+      if (!session) {
+        clearDailyAuthExpiry();
+        return false;
+      }
+
+      const expiresAt = getOrCreateDailyAuthExpiry();
+      const remainingMs = expiresAt - Date.now();
+      if (remainingMs <= 0) {
+        window.setTimeout(signOutExpiredSession, 0);
+        return false;
+      }
+
+      expiryTimerId = window.setTimeout(signOutExpiredSession, remainingMs + 100);
+      return true;
+    };
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!isMounted) return;
-      setUserSession(session);
-      if (session) {
+      const isSessionValidToday = scheduleDailySessionExpiry(session);
+      setUserSession(isSessionValidToday ? session : null);
+      if (session && isSessionValidToday) {
         fetchUserProfile(session.user.id);
         // 확실한 타이밍에 해시(토큰) 정리
         clearAuthCallbackUrl();
@@ -290,8 +368,9 @@ function MainApp() {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUserSession(session);
-      if (session) {
+      const isSessionValidToday = scheduleDailySessionExpiry(session);
+      setUserSession(isSessionValidToday ? session : null);
+      if (session && isSessionValidToday) {
         fetchUserProfile(session.user.id);
         // 로그인 성공 후 주소창에 남은 지저분한 해시(토큰) 값 정리
         clearAuthCallbackUrl();
@@ -300,8 +379,21 @@ function MainApp() {
       }
     });
 
+    const validateSessionDate = () => {
+      if (document.visibilityState !== 'visible') return;
+      const savedExpiry = Number(localStorage.getItem(DAILY_AUTH_EXPIRY_KEY));
+      if (Number.isFinite(savedExpiry) && savedExpiry > 0 && Date.now() >= savedExpiry) {
+        signOutExpiredSession();
+      }
+    };
+    window.addEventListener('focus', validateSessionDate);
+    document.addEventListener('visibilitychange', validateSessionDate);
+
     return () => {
       isMounted = false;
+      clearExpiryTimer();
+      window.removeEventListener('focus', validateSessionDate);
+      document.removeEventListener('visibilitychange', validateSessionDate);
       subscription.unsubscribe();
     };
   }, []);
@@ -330,7 +422,12 @@ function MainApp() {
       userId: userSession?.user?.id,
       sessionId
     });
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
+    if (error) {
+      showToast('로그아웃 중 오류가 발생했습니다: ' + error.message);
+      return;
+    }
+    clearDailyAuthExpiry();
     setUserSession(null);
     setUserProfile(null);
   };
@@ -2290,6 +2387,22 @@ function MainApp() {
               <span>노래 만들기</span>
             </div>
           </li>
+          <li className="live-chat-nav-entry">
+            <button
+              type="button"
+              className={`live-chat-nav-button ${isLiveChatOpen ? 'active' : ''}`}
+              onClick={() => { setIsLiveChatOpen((open) => !open); closeMobileMenu(); }}
+              aria-expanded={isLiveChatOpen}
+              aria-controls="musicdrive-live-chat"
+            >
+              <span className="live-chat-nav-icon"><MessageCircle size={19} /></span>
+              <span className="live-chat-nav-copy">
+                <strong>실시간 대화</strong>
+                <small><i /> 접속자들과 이야기하기</small>
+              </span>
+              <span className="live-chat-nav-state">{isLiveChatOpen ? '열림' : '열기'}</span>
+            </button>
+          </li>
           
         </ul>
 
@@ -3487,6 +3600,15 @@ function MainApp() {
           </>
         )}
       </main>
+
+      <LiveChatPanel
+        key={userSession?.user?.id || 'guest'}
+        id="musicdrive-live-chat"
+        isOpen={isLiveChatOpen}
+        onClose={() => setIsLiveChatOpen(false)}
+        session={userSession}
+        onLoginRequest={handleGoogleLogin}
+      />
 
       {/* Floating Bottom Music Player */}
       <footer 

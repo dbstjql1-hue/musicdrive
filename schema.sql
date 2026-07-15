@@ -212,3 +212,21 @@ DROP POLICY IF EXISTS "Service role manages user activity" ON public.user_activi
 CREATE POLICY "Service role manages user activity"
     ON public.user_activity FOR ALL TO service_role
     USING (true) WITH CHECK (true);
+
+-- 실시간 채팅은 테이블에 저장하지 않고 private Realtime 채널로만 전달합니다.
+-- 클라이언트는 수신과 접속 현황만 사용할 수 있고, 메시지 발송은 서버의 필터를 통과해야 합니다.
+DROP POLICY IF EXISTS "MusicDrive chat members receive realtime" ON realtime.messages;
+CREATE POLICY "MusicDrive chat members receive realtime"
+    ON realtime.messages FOR SELECT TO authenticated
+    USING (
+      (SELECT realtime.topic()) = 'room:musicdrive:lobby'
+      AND realtime.messages.extension IN ('broadcast', 'presence')
+    );
+
+DROP POLICY IF EXISTS "MusicDrive chat members publish presence" ON realtime.messages;
+CREATE POLICY "MusicDrive chat members publish presence"
+    ON realtime.messages FOR INSERT TO authenticated
+    WITH CHECK (
+      (SELECT realtime.topic()) = 'room:musicdrive:lobby'
+      AND realtime.messages.extension = 'presence'
+    );

@@ -3,10 +3,12 @@ const cors = require('cors');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { createAssetSyncService } = require('./asset-sync');
 const { selectWeeklyMatch } = require('./weekly-match');
 const { buildUserDashboard } = require('./user-dashboard');
+const { moderateChatMessage, moderateChatNickname, normalizeForMatching } = require('./chat-moderation');
 require('dotenv').config();
 
 const app = express();
@@ -104,6 +106,13 @@ async function canManageBoardRecord(ownerKey, user) {
     .maybeSingle();
 
   return !error && profile?.role === 'admin';
+}
+
+function getChatDisplayName(user) {
+  const metadataName = user?.user_metadata?.full_name || user?.user_metadata?.name;
+  const emailName = String(user?.email || '').split('@')[0];
+  const safeName = moderateChatNickname(metadataName || emailName);
+  return safeName || `사용자-${String(user?.id || '').slice(0, 5)}`;
 }
 
 function toDateKey(value) {
@@ -1291,6 +1300,112 @@ app.get('/api/diagnose', async (req, res) => {
     res.status(500).json({ status: 'error', diagnosis });
   } else {
     res.json({ status: 'healthy', diagnosis });
+  }
+});
+
+// ==========================================
+// 실시간 대화(Chat) API 엔드포인트
+// ==========================================
+
+const CHAT_SLOW_MODE_MS = 3_000;
+const CHAT_RATE_WINDOW_MS = 60_000;
+const CHAT_RATE_LIMIT = 12;
+const CHAT_DUPLICATE_WINDOW_MS = 30_000;
+const CHAT_TOPIC = 'room:musicdrive:lobby';
+const chatRateState = new Map();
+
+function hashChatContent(content) {
+  return crypto.createHash('sha256').update(normalizeForMatching(content)).digest('hex');
+}
+
+function getRecentChatAttempts(userId, now) {
+  const recent = (chatRateState.get(userId) || [])
+    .filter((attempt) => now - attempt.timestamp <= CHAT_RATE_WINDOW_MS);
+  if (recent.length > 0) chatRateState.set(userId, recent);
+  else chatRateState.delete(userId);
+  return recent;
+}
+
+async function broadcastTransientChatMessage(message) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5_000);
+  try {
+    const response = await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
+      method: 'POST',
+      headers: {
+        apikey: supabaseServiceKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        messages: [{
+          topic: CHAT_TOPIC,
+          event: 'chat_message',
+          payload: message,
+          private: true
+        }]
+      }),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      throw new Error(`Realtime Broadcast rejected with status ${response.status}`);
+    }
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+app.post('/api/chat/messages', async (req, res) => {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return res.status(401).json({ error: '로그인 후 메시지를 보낼 수 있습니다.' });
+
+    const moderation = moderateChatMessage(req.body?.content);
+    if (!moderation.allowed) {
+      return res.status(422).json({
+        error: moderation.message,
+        blocked: true,
+        reason: moderation.code
+      });
+    }
+
+    const now = Date.now();
+    const recentAttempts = getRecentChatAttempts(user.id, now);
+    const latestAttempt = recentAttempts[recentAttempts.length - 1];
+    if (latestAttempt && now - latestAttempt.timestamp < CHAT_SLOW_MODE_MS) {
+      return res.status(429).json({ error: '느린 채팅이 적용 중입니다. 3초 후 다시 보내주세요.' });
+    }
+    if (recentAttempts.length >= CHAT_RATE_LIMIT) {
+      return res.status(429).json({ error: '메시지를 너무 자주 보내고 있습니다. 잠시 후 다시 시도해 주세요.' });
+    }
+
+    const contentHash = hashChatContent(moderation.content);
+    const repeatedMessage = recentAttempts.find((attempt) => (
+      now - attempt.timestamp <= CHAT_DUPLICATE_WINDOW_MS && attempt.contentHash === contentHash
+    ));
+    if (repeatedMessage) {
+      return res.status(422).json({
+        error: '같은 메시지를 반복해서 보낼 수 없습니다.',
+        blocked: true,
+        reason: 'duplicate'
+      });
+    }
+
+    const message = {
+      id: crypto.randomUUID(),
+      user_id: user.id,
+      nickname: getChatDisplayName(user),
+      content: moderation.content,
+      created_at: new Date(now).toISOString()
+    };
+    // Realtime REST Broadcast는 DB 행을 만들지 않고 현재 접속자에게만 전달됩니다.
+    await broadcastTransientChatMessage(message);
+
+    chatRateState.set(user.id, [...recentAttempts, { timestamp: now, contentHash }]);
+    return res.status(201).json(message);
+  } catch (err) {
+    console.error('실시간 대화 전송 오류:', err);
+    return res.status(500).json({ error: '메시지를 전송할 수 없습니다.' });
   }
 });
 
