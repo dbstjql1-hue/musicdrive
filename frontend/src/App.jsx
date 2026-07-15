@@ -199,8 +199,8 @@ function MainApp() {
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [newPlaylistDesc, setNewPlaylistDesc] = useState('');
   
-  // Popover State (플레이리스트 추가 팝업)
-  const [activePopoverSongId, setActivePopoverSongId] = useState(null);
+  // Playlist picker state
+  const [playlistTargetSong, setPlaylistTargetSong] = useState(null);
 
   // Edit Song State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -1632,7 +1632,7 @@ function MainApp() {
       const res = await apiFetch(`${API_BASE_URL}/api/playlists/${playlistId}/songs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ songId, userId: userSession?.user?.id })
+        body: JSON.stringify({ songId, userId: userSession?.user?.id, sessionId })
       });
       const data = await res.json();
       if (res.ok) {
@@ -1643,13 +1643,21 @@ function MainApp() {
           songId,
           metadata: { playlistId }
         });
+        setPlaylistTargetSong(null);
       } else {
         showToast(data.error || '추가할 수 없습니다.');
       }
-      setActivePopoverSongId(null);
     } catch (err) {
       console.error(err);
+      showToast('서버 연결 문제로 플레이리스트에 추가하지 못했습니다.');
     }
+  };
+
+  const openPlaylistSelector = (e, song) => {
+    e.stopPropagation();
+    if (!requireLogin()) return;
+    fetchPlaylists();
+    setPlaylistTargetSong(song);
   };
 
   const removeSongFromPlaylist = async (e, playlistId, songId) => {
@@ -2292,16 +2300,18 @@ function MainApp() {
                       >
                         <Heart size={16} fill={likedSongIds.includes(song.id) ? "currentColor" : "none"} />
                       </button>
-                      <button 
-                        className="icon-btn edit-btn" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEditClick(song);
-                        }}
-                        title="음원 수정"
-                      >
-                        <Edit2 size={16} />
-                      </button>
+                      {userProfile?.role === 'admin' && (
+                        <button
+                          className="icon-btn edit-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditClick(song);
+                          }}
+                          title="음원 수정"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                      )}
                       <button 
                         className="icon-btn"
                         onClick={(e) => removeSongFromPlaylist(e, selectedPlaylist.id, song.id)}
@@ -2389,25 +2399,24 @@ function MainApp() {
                         </button>
                         <button 
                           className="icon-btn" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActivePopoverSongId(activePopoverSongId === song.id ? null : song.id);
-                          }}
+                          onClick={(e) => openPlaylistSelector(e, song)}
                           title="플레이리스트에 추가"
                         >
                           <FolderPlus size={16} />
                         </button>
 
-                        <button 
-                          className="icon-btn edit-btn" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEditClick(song);
-                          }}
-                          title="음원 수정"
-                        >
-                          <Edit2 size={16} />
-                        </button>
+                        {userProfile?.role === 'admin' && (
+                          <button
+                            className="icon-btn edit-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditClick(song);
+                            }}
+                            title="음원 수정"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                        )}
                         {isAdminAuthenticated && (
                           <button 
                             className="icon-btn delete-btn" 
@@ -2418,27 +2427,6 @@ function MainApp() {
                           </button>
                         )}
 
-                        {/* 플레이리스트 추가 팝오버 */}
-                        {activePopoverSongId === song.id && (
-                          <div className="playlist-select-popover">
-                            <div style={{ padding: '4px 8px', fontSize: '11px', color: 'var(--text-muted)' }}>플레이리스트 선택</div>
-                            {playlists.map(pl => (
-                              <div 
-                                className="popover-item" 
-                                key={pl.id}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  addSongToPlaylist(pl.id, song.id);
-                                }}
-                              >
-                                {pl.name}
-                              </div>
-                            ))}
-                            {playlists.length === 0 && (
-                              <div style={{ padding: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>플레이리스트가 없습니다.</div>
-                            )}
-                          </div>
-                        )}
                       </div>
                     </div>
                   ))}
@@ -2458,24 +2446,26 @@ function MainApp() {
                             <Play size={20} fill="currentColor" style={{ marginLeft: '2px' }} />
                           </div>
                         </div>
-                        <div className="card-admin-overlay" onClick={(e) => e.stopPropagation()}>
-                          <button 
-                            className="icon-btn edit-btn" 
-                            onClick={() => handleEditClick(song)}
-                            title="음원 수정"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          {isAdminAuthenticated && (
-                            <button 
-                              className="icon-btn delete-btn" 
-                              onClick={(e) => handleDeleteSong(e, song)}
-                              title="음원 삭제"
+                        {userProfile?.role === 'admin' && (
+                          <div className="card-admin-overlay" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              className="icon-btn edit-btn"
+                              onClick={() => handleEditClick(song)}
+                              title="음원 수정"
                             >
-                              <Trash2 size={14} />
+                              <Edit2 size={14} />
                             </button>
-                          )}
-                        </div>
+                            {isAdminAuthenticated && (
+                              <button
+                                className="icon-btn delete-btn"
+                                onClick={(e) => handleDeleteSong(e, song)}
+                                title="음원 삭제"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div className="card-info">
                         <div className="card-title">{song.title}</div>
@@ -2599,10 +2589,6 @@ function MainApp() {
                         <div className="row-artist">{song.artist}</div>
                       </div>
                       <div className="row-meta">
-                        <div className="meta-item">
-                          <Play size={13} />
-                          {song.play_count || 0}
-                        </div>
                         <button 
                           className={`icon-btn ${likedSongIds.includes(song.id) ? 'liked' : ''}`}
                           onClick={(e) => toggleLike(e, song.id)}
@@ -2611,25 +2597,24 @@ function MainApp() {
                         </button>
                         <button 
                           className="icon-btn"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActivePopoverSongId(activePopoverSongId === song.id ? null : song.id);
-                          }}
+                          onClick={(e) => openPlaylistSelector(e, song)}
                           title="플레이리스트에 추가"
                         >
                           <FolderPlus size={16} />
                         </button>
 
-                        <button 
-                          className="icon-btn edit-btn" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEditClick(song);
-                          }}
-                          title="음원 수정"
-                        >
-                          <Edit2 size={16} />
-                        </button>
+                        {userProfile?.role === 'admin' && (
+                          <button
+                            className="icon-btn edit-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditClick(song);
+                            }}
+                            title="음원 수정"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                        )}
                         {isAdminAuthenticated && (
                           <button 
                             className="icon-btn delete-btn" 
@@ -2638,24 +2623,6 @@ function MainApp() {
                           >
                             <Trash2 size={16} />
                           </button>
-                        )}
-
-                        {activePopoverSongId === song.id && (
-                          <div className="playlist-select-popover">
-                            <div style={{ padding: '4px 8px', fontSize: '11px', color: 'var(--text-muted)' }}>플레이리스트 선택</div>
-                            {playlists.map(pl => (
-                              <div 
-                                className="popover-item" 
-                                key={pl.id}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  addSongToPlaylist(pl.id, song.id);
-                                }}
-                              >
-                                {pl.name}
-                              </div>
-                            ))}
-                          </div>
                         )}
                       </div>
                     </div>
@@ -3689,6 +3656,55 @@ function MainApp() {
           </div>
         )}
       </div>
+
+      {/* Playlist Song Picker Modal */}
+      {playlistTargetSong && (
+        <div className="modal-overlay" onClick={() => setPlaylistTargetSong(null)}>
+          <div className="modal-content playlist-picker-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3>플레이리스트에 추가</h3>
+                <p className="playlist-picker-song">{playlistTargetSong.title} · {playlistTargetSong.artist}</p>
+              </div>
+              <button className="icon-btn" onClick={() => setPlaylistTargetSong(null)} aria-label="닫기">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="playlist-picker-list">
+              {playlists.map((playlist) => (
+                <button
+                  type="button"
+                  className="playlist-choice-button"
+                  key={playlist.id}
+                  onClick={() => addSongToPlaylist(playlist.id, playlistTargetSong.id)}
+                >
+                  <FolderHeart size={20} />
+                  <span>
+                    <strong>{playlist.name}</strong>
+                    <small>{playlist.description || '설명 없음'}</small>
+                  </span>
+                  <Plus size={18} />
+                </button>
+              ))}
+              {playlists.length === 0 && (
+                <div className="playlist-picker-empty">
+                  <p>아직 플레이리스트가 없습니다.</p>
+                  <button
+                    type="button"
+                    className="btn-primary-glow"
+                    onClick={() => {
+                      setPlaylistTargetSong(null);
+                      setIsPlaylistModalOpen(true);
+                    }}
+                  >
+                    새 플레이리스트 만들기
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Playlist Creation Modal */}
       {isPlaylistModalOpen && (
