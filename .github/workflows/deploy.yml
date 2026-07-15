@@ -32,6 +32,8 @@ jobs:
                   secret: ADMIN_PASSWORD
                 - name: CORS_ORIGINS
                   value: https://musicdrive.kro.kr
+                - name: GITHUB_ASSET_SYNC_TOKEN
+                  secret: github-asset-sync-token
             context:
               git:
                 url: https://github.com/${{ github.repository }}.git
