@@ -1,17 +1,69 @@
 import { useEffect, useRef, useState } from 'react';
-import { GripHorizontal, LogIn, LogOut, MessageCircle, Send, ShieldCheck, SlidersHorizontal, Smile, Users, X } from 'lucide-react';
+import { GripHorizontal, LogIn, LogOut, Maximize2, MessageCircle, Monitor, Send, ShieldCheck, SlidersHorizontal, Smile, Smartphone, Users, X } from 'lucide-react';
 import { apiFetch } from '../apiClient';
 import { supabase } from '../supabaseClient';
 
 const CHAT_PANEL_WIDTH = 400;
 const CHAT_PANEL_HEIGHT = 560;
 const PLAYER_SAFE_SPACE = 104;
+const CHAT_OPACITY_STORAGE_KEY = 'musicdrive_chat_opacity_v2';
+const EMOJI_CATEGORIES = [
+  {
+    id: 'faces',
+    label: '표정',
+    icon: '😀',
+    emojis: ['😀', '😂', '😊', '😍', '🥰', '😎', '🤣', '🥹', '😭', '😅', '🤔', '😴'],
+  },
+  {
+    id: 'cheer',
+    label: '응원',
+    icon: '👏',
+    emojis: ['👍', '👏', '🙌', '💪', '🔥', '🎉', '✨', '💯', '🫶', '🤝', '🥳', '🙏'],
+  },
+  {
+    id: 'music',
+    label: '음악',
+    icon: '🎵',
+    emojis: ['🎵', '🎶', '🎧', '🎤', '🎸', '🥁', '🎹', '🎷', '🕺', '💃', '🔊', '🎼'],
+  },
+  {
+    id: 'hearts',
+    label: '마음',
+    icon: '💜',
+    emojis: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🩷', '🤍', '💖', '💕', '💓', '💗'],
+  },
+];
 
 function getDefaultPosition() {
   if (typeof window === 'undefined') return { x: 24, y: 80 };
   return {
     x: Math.max(16, window.innerWidth - CHAT_PANEL_WIDTH - 28),
     y: Math.max(16, Math.min(90, window.innerHeight - CHAT_PANEL_HEIGHT - PLAYER_SAFE_SPACE)),
+  };
+}
+
+function getDefaultPanelSize() {
+  if (typeof window === 'undefined') return { width: CHAT_PANEL_WIDTH, height: CHAT_PANEL_HEIGHT };
+  const isMobile = window.innerWidth <= 768;
+  return clampPanelSize({
+    width: isMobile ? Math.max(280, window.innerWidth - 24) : CHAT_PANEL_WIDTH,
+    height: isMobile ? 520 : CHAT_PANEL_HEIGHT,
+  });
+}
+
+function clampPanelSize(size) {
+  if (typeof window === 'undefined') return size;
+  const isMobile = window.innerWidth <= 768;
+  const playerHeight = Number.parseFloat(
+    window.getComputedStyle(document.documentElement).getPropertyValue('--player-height')
+  ) || (isMobile ? 112 : 88);
+  const maxWidth = Math.max(280, window.innerWidth - 24);
+  const maxHeight = Math.max(300, window.innerHeight - playerHeight - (isMobile ? 82 : 32));
+  const minWidth = Math.min(isMobile ? 280 : 320, maxWidth);
+  const minHeight = Math.min(isMobile ? 300 : 410, maxHeight);
+  return {
+    width: isMobile ? maxWidth : Math.min(maxWidth, Math.max(minWidth, size.width)),
+    height: Math.min(maxHeight, Math.max(minHeight, size.height)),
   };
 }
 
@@ -62,8 +114,8 @@ function createPresenceNotice(eventType, presence, presenceKey) {
 }
 
 function getSavedOpacity() {
-  const saved = Number.parseInt(localStorage.getItem('musicdrive_chat_opacity') || '', 10);
-  return Number.isFinite(saved) ? Math.min(100, Math.max(15, saved)) : 94;
+  const saved = Number.parseInt(localStorage.getItem(CHAT_OPACITY_STORAGE_KEY) || '', 10);
+  return Number.isFinite(saved) ? Math.min(100, Math.max(15, saved)) : 18;
 }
 
 export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) {
@@ -75,12 +127,22 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
   const [connectionState, setConnectionState] = useState(session?.user?.id ? 'connecting' : 'login');
   const [systemNotice, setSystemNotice] = useState('');
   const [position, setPosition] = useState(getDefaultPosition);
+  const [panelSize, setPanelSize] = useState(getDefaultPanelSize);
   const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
   const [chatOpacity, setChatOpacity] = useState(getSavedOpacity);
   const [isOpacityOpen, setIsOpacityOpen] = useState(false);
+  const [isEmojiOpen, setIsEmojiOpen] = useState(false);
+  const [emojiCategory, setEmojiCategory] = useState(EMOJI_CATEGORIES[0].id);
   const panelRef = useRef(null);
   const messagesEndRef = useRef(null);
   const dragStateRef = useRef(null);
+  const resizeStateRef = useRef(null);
+  const inputRef = useRef(null);
+  const emojiButtonRef = useRef(null);
+  const emojiPickerRef = useRef(null);
+  const activeEmojiCategory = EMOJI_CATEGORIES.find((category) => category.id === emojiCategory)
+    || EMOJI_CATEGORIES[0];
 
   useEffect(() => {
     if (!session?.user?.id) return undefined;
@@ -163,14 +225,39 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
   }, [isOpen, messages]);
 
   useEffect(() => {
-    const handleResize = () => setPosition((current) => clampPosition(current, panelRef.current));
+    const handleResize = () => {
+      setPanelSize((current) => clampPanelSize(current));
+      setPosition((current) => clampPosition(current, panelRef.current));
+    };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('musicdrive_chat_opacity', String(chatOpacity));
+    localStorage.setItem(CHAT_OPACITY_STORAGE_KEY, String(chatOpacity));
   }, [chatOpacity]);
+
+  useEffect(() => {
+    if (!isEmojiOpen) return undefined;
+
+    const handleOutsidePointer = (event) => {
+      if (
+        emojiPickerRef.current?.contains(event.target)
+        || emojiButtonRef.current?.contains(event.target)
+      ) return;
+      setIsEmojiOpen(false);
+    };
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setIsEmojiOpen(false);
+    };
+
+    document.addEventListener('pointerdown', handleOutsidePointer);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsidePointer);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isEmojiOpen]);
 
   const handlePointerDown = (event) => {
     if (window.innerWidth <= 768 || event.target.closest('button, input')) return;
@@ -201,6 +288,61 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
     setIsDragging(false);
   };
 
+  const handleResizeStart = (event) => {
+    event.stopPropagation();
+    resizeStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originWidth: panelRef.current?.getBoundingClientRect().width || panelSize.width,
+      originHeight: panelRef.current?.getBoundingClientRect().height || panelSize.height,
+      isMobile: window.innerWidth <= 768,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setIsResizing(true);
+  };
+
+  const handleResizeMove = (event) => {
+    const resize = resizeStateRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - resize.startX;
+    const deltaY = event.clientY - resize.startY;
+    const nextSize = clampPanelSize({
+      width: resize.isMobile ? resize.originWidth : resize.originWidth + deltaX,
+      height: resize.originHeight + (resize.isMobile ? -deltaY : deltaY),
+    });
+    setPanelSize(nextSize);
+
+    if (!resize.isMobile) {
+      setPosition((current) => ({
+        x: Math.min(current.x, Math.max(12, window.innerWidth - nextSize.width - 12)),
+        y: Math.min(current.y, Math.max(12, window.innerHeight - nextSize.height - PLAYER_SAFE_SPACE)),
+      }));
+    }
+  };
+
+  const stopResizing = (event) => {
+    if (resizeStateRef.current?.pointerId !== event.pointerId) return;
+    resizeStateRef.current = null;
+    setIsResizing(false);
+  };
+
+  const handleEmojiSelect = (emoji) => {
+    const input = inputRef.current;
+    const selectionStart = input?.selectionStart ?? draft.length;
+    const selectionEnd = input?.selectionEnd ?? selectionStart;
+    const nextDraft = `${draft.slice(0, selectionStart)}${emoji}${draft.slice(selectionEnd)}`;
+    if (nextDraft.length > 200) return;
+
+    setDraft(nextDraft);
+    window.requestAnimationFrame(() => {
+      input?.focus();
+      const nextCursor = selectionStart + emoji.length;
+      input?.setSelectionRange(nextCursor, nextCursor);
+    });
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!session?.access_token) {
@@ -226,6 +368,7 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
       if (!response.ok) throw new Error(data.error || '메시지를 전송하지 못했습니다.');
       setMessages((current) => appendUniqueMessage(current, data));
       setDraft('');
+      setIsEmojiOpen(false);
     } catch (error) {
       setSystemNotice(error.message || '메시지를 전송하지 못했습니다.');
     } finally {
@@ -239,16 +382,30 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
     <section
       id={id}
       ref={panelRef}
-      className={`live-chat-panel ${isDragging ? 'is-dragging' : ''}`}
+      className={`live-chat-panel ${isDragging ? 'is-dragging' : ''} ${isResizing ? 'is-resizing' : ''}`}
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
+        '--chat-panel-width': `${panelSize.width}px`,
+        '--chat-panel-height': `${panelSize.height}px`,
         '--chat-panel-opacity': chatOpacity / 100,
         '--chat-panel-blur': `${Math.max(0, Math.round((chatOpacity - 15) * 0.16))}px`,
         '--chat-chrome-opacity': Math.max(0.08, (chatOpacity / 100) * 0.58),
       }}
       aria-label="실시간 대화창"
     >
+      <button
+        type="button"
+        className="live-chat-resize-handle"
+        onPointerDown={handleResizeStart}
+        onPointerMove={handleResizeMove}
+        onPointerUp={stopResizing}
+        onPointerCancel={stopResizing}
+        aria-label="대화창 크기 조절"
+        title="드래그해서 대화창 크기 조절"
+      >
+        <Maximize2 size={13} />
+      </button>
       <header
         className="live-chat-header"
         onPointerDown={handlePointerDown}
@@ -271,11 +428,15 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
           <button
             type="button"
             className={`live-chat-opacity-toggle ${isOpacityOpen ? 'active' : ''}`}
-            onClick={() => setIsOpacityOpen((open) => !open)}
+            onClick={() => {
+              setIsOpacityOpen((open) => !open);
+              setIsEmojiOpen(false);
+            }}
             aria-label="대화창 투명도 설정"
             aria-expanded={isOpacityOpen}
           >
             <SlidersHorizontal size={16} />
+            <span>투명도 {chatOpacity}%</span>
           </button>
           <button type="button" className="live-chat-close" onClick={onClose} aria-label="대화창 닫기">
             <X size={18} />
@@ -333,12 +494,22 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
               }
 
               const isMine = message.user_id === session.user.id;
+              const isMobileDevice = message.device_type === 'mobile';
+              const DeviceIcon = isMobileDevice ? Smartphone : Monitor;
               return (
                 <article className={`live-chat-message ${isMine ? 'mine' : ''}`} key={message.id}>
                   <div className="live-chat-avatar">{String(message.nickname || '음').slice(0, 1)}</div>
                   <div className="live-chat-message-body">
                     <div className="live-chat-message-meta">
                       <strong>{message.nickname || '음악친구'}</strong>
+                      <span
+                        className={`live-chat-device ${isMobileDevice ? 'mobile' : 'pc'}`}
+                        title={isMobileDevice ? '모바일에서 접속' : 'PC에서 접속'}
+                        aria-label={isMobileDevice ? '모바일 사용자' : 'PC 사용자'}
+                      >
+                        <DeviceIcon size={9} />
+                        {isMobileDevice ? '모바일' : 'PC'}
+                      </span>
                       <time>{formatChatTime(message.created_at)}</time>
                     </div>
                     <p>{message.content}</p>
@@ -354,9 +525,56 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
               <div className="live-chat-notice"><ShieldCheck size={14} /> {systemNotice}</div>
             )}
             <div className="live-chat-policy">욕설·음란·혐오·도배는 자동 차단됩니다.</div>
+            {isEmojiOpen && (
+              <div className="live-chat-emoji-picker" ref={emojiPickerRef} role="dialog" aria-label="이모티콘 선택">
+                <div className="live-chat-emoji-picker-head">
+                  <strong>이모티콘</strong>
+                  <span>대화에 바로 추가됩니다</span>
+                </div>
+                <div className="live-chat-emoji-tabs" role="tablist" aria-label="이모티콘 카테고리">
+                  {EMOJI_CATEGORIES.map((category) => (
+                    <button
+                      key={category.id}
+                      type="button"
+                      role="tab"
+                      className={emojiCategory === category.id ? 'active' : ''}
+                      aria-selected={emojiCategory === category.id}
+                      onClick={() => setEmojiCategory(category.id)}
+                    >
+                      <span>{category.icon}</span>{category.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="live-chat-emoji-grid">
+                  {activeEmojiCategory.emojis.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => handleEmojiSelect(emoji)}
+                      aria-label={`${emoji} 이모티콘 추가`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <form className="live-chat-compose" onSubmit={handleSubmit}>
-              <button type="button" className="live-chat-emoji" aria-label="이모지"><Smile size={18} /></button>
+              <button
+                ref={emojiButtonRef}
+                type="button"
+                className={`live-chat-emoji ${isEmojiOpen ? 'active' : ''}`}
+                onClick={() => {
+                  setIsEmojiOpen((open) => !open);
+                  setIsOpacityOpen(false);
+                }}
+                aria-label="이모티콘 선택"
+                aria-expanded={isEmojiOpen}
+              >
+                <Smile size={18} />
+              </button>
               <input
+                ref={inputRef}
                 value={draft}
                 onChange={(event) => setDraft(event.target.value.slice(0, 200))}
                 placeholder="메시지를 입력하세요"

@@ -286,7 +286,9 @@ function MainApp() {
   
   // Toast UI
   const [toastMessage, setToastMessage] = useState('');
-  const [isLiveChatOpen, setIsLiveChatOpen] = useState(true);
+  const [isLiveChatOpen, setIsLiveChatOpen] = useState(
+    () => !window.matchMedia('(max-width: 768px)').matches
+  );
 
   // Supabase Auth (하이브리드 모드 - Auth 기능 복구)
 

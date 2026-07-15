@@ -8,7 +8,12 @@ const { createClient } = require('@supabase/supabase-js');
 const { createAssetSyncService } = require('./asset-sync');
 const { selectWeeklyMatch } = require('./weekly-match');
 const { buildUserDashboard } = require('./user-dashboard');
-const { moderateChatMessage, moderateChatNickname, normalizeForMatching } = require('./chat-moderation');
+const {
+  detectChatDeviceType,
+  moderateChatMessage,
+  moderateChatNickname,
+  normalizeForMatching
+} = require('./chat-moderation');
 require('dotenv').config();
 
 const app = express();
@@ -1395,6 +1400,7 @@ app.post('/api/chat/messages', async (req, res) => {
       id: crypto.randomUUID(),
       user_id: user.id,
       nickname: getChatDisplayName(user),
+      device_type: detectChatDeviceType(req.get('user-agent')),
       content: moderation.content,
       created_at: new Date(now).toISOString()
     };

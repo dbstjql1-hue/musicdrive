@@ -741,8 +741,8 @@ body {
 .live-chat-panel {
   position: fixed;
   z-index: 180;
-  width: min(400px, calc(100vw - 24px));
-  height: min(560px, calc(100dvh - var(--player-height) - 32px));
+  width: min(var(--chat-panel-width, 400px), calc(100vw - 24px));
+  height: min(var(--chat-panel-height, 560px), calc(100dvh - var(--player-height) - 32px));
   min-height: 410px;
   display: flex;
   flex-direction: column;
@@ -759,6 +759,36 @@ body {
 .live-chat-panel.is-dragging {
   user-select: none;
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.68), 0 0 36px rgba(157, 78, 221, 0.22);
+}
+
+.live-chat-panel.is-resizing {
+  user-select: none;
+}
+
+.live-chat-resize-handle {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  z-index: 8;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: #a78bfa;
+  background: rgba(24, 18, 38, 0.78);
+  cursor: nwse-resize;
+  touch-action: none;
+  opacity: 0.82;
+}
+
+.live-chat-resize-handle:hover,
+.live-chat-panel.is-resizing .live-chat-resize-handle {
+  color: #f3e8ff;
+  background: rgba(126, 34, 206, 0.86);
+  opacity: 1;
 }
 
 @keyframes liveChatEnter {
@@ -874,6 +904,18 @@ body {
   border-radius: 9px;
   color: var(--text-secondary);
   background: rgba(255, 255, 255, 0.04);
+}
+
+.live-chat-opacity-toggle {
+  width: auto;
+  min-width: 78px;
+  display: inline-flex;
+  grid-auto-flow: column;
+  gap: 5px;
+  padding: 0 8px;
+  font-size: 9px;
+  font-weight: 750;
+  white-space: nowrap;
 }
 
 .live-chat-close:hover,
@@ -1041,6 +1083,31 @@ body {
   font-size: 9px;
 }
 
+.live-chat-device {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  color: #a1a1aa;
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 8px;
+  line-height: 1;
+}
+
+.live-chat-device.mobile {
+  color: #93c5fd;
+  border-color: rgba(96, 165, 250, 0.18);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.live-chat-device.pc {
+  color: #c4b5fd;
+  border-color: rgba(167, 139, 250, 0.18);
+  background: rgba(139, 92, 246, 0.08);
+}
+
 .live-chat-message p {
   margin: 0;
   color: #e4e4e7;
@@ -1106,6 +1173,7 @@ body {
 }
 
 .live-chat-compose-wrap {
+  position: relative;
   padding: 8px 12px 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
   background: rgba(4, 4, 8, var(--chat-chrome-opacity, 0.58));
@@ -1162,6 +1230,98 @@ body {
   padding: 2px;
   color: #a1a1aa;
   background: transparent;
+}
+
+.live-chat-emoji:hover,
+.live-chat-emoji.active {
+  color: #e9d5ff;
+}
+
+.live-chat-emoji-picker {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 64px;
+  z-index: 6;
+  padding: 12px;
+  border: 1px solid rgba(192, 132, 252, 0.35);
+  border-radius: 14px;
+  background: rgba(18, 15, 26, 0.98);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.55), 0 0 24px rgba(147, 51, 234, 0.13);
+  backdrop-filter: blur(14px);
+}
+
+.live-chat-emoji-picker-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 9px;
+}
+
+.live-chat-emoji-picker-head strong {
+  color: #f4f4f5;
+  font-size: 12px;
+}
+
+.live-chat-emoji-picker-head span {
+  color: #71717a;
+  font-size: 8px;
+}
+
+.live-chat-emoji-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.live-chat-emoji-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 6px 3px;
+  border: 0;
+  border-radius: 8px;
+  color: #a1a1aa;
+  background: transparent;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.live-chat-emoji-tabs button:hover,
+.live-chat-emoji-tabs button.active {
+  color: #f3e8ff;
+  background: rgba(157, 78, 221, 0.18);
+}
+
+.live-chat-emoji-tabs button > span {
+  font-size: 13px;
+}
+
+.live-chat-emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  padding-top: 9px;
+}
+
+.live-chat-emoji-grid button {
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.025);
+  font-size: 20px;
+  cursor: pointer;
+  transition: transform 0.13s ease, background 0.13s ease;
+}
+
+.live-chat-emoji-grid button:hover {
+  background: rgba(157, 78, 221, 0.2);
+  transform: scale(1.13);
 }
 
 .live-chat-count {
@@ -1234,17 +1394,30 @@ body {
     top: auto !important;
     bottom: calc(var(--player-height) + env(safe-area-inset-bottom) + 10px);
     width: auto;
-    height: min(520px, calc(100dvh - var(--player-height) - 82px));
-    min-height: 360px;
+    height: min(var(--chat-panel-height, 520px), calc(100dvh - var(--player-height) - 82px));
+    min-height: 300px;
     border-radius: 16px;
   }
 
   .live-chat-header {
+    padding-top: 18px;
     cursor: default;
   }
 
   .live-chat-grip {
     display: none;
+  }
+
+  .live-chat-resize-handle {
+    left: 50%;
+    right: auto;
+    top: 2px;
+    bottom: auto;
+    width: 48px;
+    height: 18px;
+    border-radius: 0 0 9px 9px;
+    cursor: ns-resize;
+    transform: translateX(-50%);
   }
 
   .live-chat-online {

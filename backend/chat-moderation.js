@@ -33,6 +33,7 @@ const PHONE_PATTERN = /(?:^|\D)(?:01[016789][\s.-]?)?\d{3,4}[\s.-]?\d{4}(?:\D|$)
 const REPEATED_CHARACTER_PATTERN = /(.)\1{6,}/u;
 const REPEATED_PHRASE_PATTERN = /(.{2,12})\1{3,}/u;
 const CHAT_REACTION_RUN_PATTERN = /[ㅋㅎㅠㅜ]{2,}/gu;
+const MOBILE_USER_AGENT_PATTERN = /(?:android|iphone|ipad|ipod|mobile|windows phone|opera mini|webos)/iu;
 
 function block(code, message) {
   return { allowed: false, code, message };
@@ -83,8 +84,13 @@ function moderateChatNickname(value) {
   return result.allowed ? nickname : null;
 }
 
+function detectChatDeviceType(userAgent) {
+  return MOBILE_USER_AGENT_PATTERN.test(String(userAgent || '')) ? 'mobile' : 'pc';
+}
+
 module.exports = {
   MAX_CHAT_LENGTH,
+  detectChatDeviceType,
   moderateChatMessage,
   moderateChatNickname,
   normalizeForMatching,
