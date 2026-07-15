@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy.yml'
 jobs:
   deploy:
     runs-on: ubuntu-latest
