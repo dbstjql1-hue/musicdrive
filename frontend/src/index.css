@@ -1121,6 +1121,7 @@ body {
 }
 
 .playlist-card {
+  position: relative;
   background-color: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 16px;
@@ -1132,6 +1133,33 @@ body {
   align-items: center;
   text-align: center;
   gap: 16px;
+}
+
+.playlist-delete-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 91, 105, 0.24);
+  border-radius: 9px;
+  color: #ff737f;
+  background: rgba(255, 71, 87, 0.08);
+  cursor: pointer;
+  opacity: 0.82;
+  transition: var(--transition);
+}
+
+.playlist-delete-button:hover,
+.playlist-delete-button:focus-visible {
+  border-color: #ff5b69;
+  color: #fff;
+  background: #e63946;
+  box-shadow: 0 0 14px rgba(230, 57, 70, 0.28);
+  opacity: 1;
+  transform: scale(1.05);
 }
 
 .playlist-card:hover {
@@ -1200,6 +1228,65 @@ body {
   justify-content: flex-end;
   gap: 12px;
   margin-top: 24px;
+}
+
+.playlist-delete-confirm {
+  max-width: 430px;
+  text-align: center;
+}
+
+.playlist-delete-icon {
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 16px;
+  border: 1px solid rgba(255, 91, 105, 0.32);
+  border-radius: 16px;
+  color: #ff737f;
+  background: rgba(255, 71, 87, 0.1);
+}
+
+.playlist-delete-confirm h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.playlist-delete-confirm p {
+  margin: 12px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.playlist-delete-confirm p strong {
+  color: var(--text-primary);
+}
+
+.playlist-delete-confirm .modal-actions {
+  justify-content: center;
+}
+
+.playlist-delete-confirm-button {
+  min-width: 112px;
+  border: 1px solid #e63946;
+  border-radius: 8px;
+  padding: 10px 16px;
+  color: #fff;
+  background: #d62839;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.playlist-delete-confirm-button:hover:not(:disabled) {
+  background: #e63946;
+  box-shadow: 0 0 16px rgba(230, 57, 70, 0.28);
+}
+
+.playlist-delete-confirm-button:disabled,
+.playlist-delete-confirm .btn-secondary:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .playlist-picker-modal {

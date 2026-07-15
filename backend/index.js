@@ -93,6 +93,19 @@ async function getAuthenticatedUser(req) {
   return data.user;
 }
 
+async function canManageBoardRecord(ownerKey, user) {
+  if (!user) return false;
+  if (ownerKey === `owner:${user.id}`) return true;
+
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  return !error && profile?.role === 'admin';
+}
+
 function toDateKey(value) {
   return new Date(value).toISOString().slice(0, 10);
 }
@@ -820,6 +833,52 @@ app.post('/api/playlists', async (req, res) => {
   }
 });
 
+// Delete a playlist owned by the authenticated user. Songs remain untouched.
+app.delete('/api/playlists/:id', async (req, res) => {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
+      return res.status(401).json({ error: '로그인이 필요한 서비스입니다.' });
+    }
+
+    const { id } = req.params;
+    const { data: playlist, error: lookupError } = await supabase
+      .from('playlists')
+      .select('id, name, user_id')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (lookupError) throw lookupError;
+    if (!playlist) return res.status(404).json({ error: '플레이리스트를 찾을 수 없습니다.' });
+    if (playlist.user_id !== user.id) {
+      return res.status(403).json({ error: '이 플레이리스트를 삭제할 권한이 없습니다.' });
+    }
+
+    const { data: deletedRows, error: deleteError } = await supabase
+      .from('playlists')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .select('id');
+
+    if (deleteError) throw deleteError;
+    if (!deletedRows?.length) {
+      return res.status(404).json({ error: '플레이리스트를 찾을 수 없습니다.' });
+    }
+
+    await recordActivity({
+      eventType: 'playlist_delete',
+      userId: user.id,
+      metadata: { playlistId: id, name: playlist.name }
+    });
+
+    res.json({ success: true, id });
+  } catch (err) {
+    console.error('플레이리스트 삭제 오류:', err.message);
+    res.status(500).json({ error: '플레이리스트를 삭제할 수 없습니다.' });
+  }
+});
+
 // 9. 특정 플레이리스트의 곡 목록 조회 (GET /api/playlists/:id/songs)
 app.get('/api/playlists/:id/songs', async (req, res) => {
   try {
@@ -1258,20 +1317,30 @@ app.get('/api/board', async (req, res) => {
 app.get('/api/board/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const user = await getAuthenticatedUser(req);
     
     const { data: post, error: getErr } = await supabase
       .from('board_posts')
-      .select('*')
+      .select('id, title, content, author, password, views, created_at')
       .eq('id', id)
       .single();
 
     if (getErr || !post) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
 
     // 조회수 + 1 업데이트 로직
-    await supabase.from('board_posts').update({ views: post.views + 1 }).eq('id', id);
-    post.views += 1;
+    await supabase.from('board_posts').update({ views: (post.views || 0) + 1 }).eq('id', id);
+    post.views = (post.views || 0) + 1;
 
-    res.json(post);
+    const canManage = await canManageBoardRecord(post.password, user);
+    res.json({
+      id: post.id,
+      title: post.title,
+      content: post.content,
+      author: post.author,
+      views: post.views,
+      created_at: post.created_at,
+      can_manage: canManage
+    });
   } catch (err) {
     console.error('게시글 상세 조회 오류:', err);
     res.status(500).json({ error: '게시글을 불러올 수 없습니다.' });
@@ -1281,18 +1350,22 @@ app.get('/api/board/:id', async (req, res) => {
 // 3. 게시글 작성
 app.post('/api/board', async (req, res) => {
   try {
-    const { title, content, author, password } = req.body;
-    if (!title || !content || !author || !password) {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return res.status(401).json({ error: '글을 작성하려면 로그인이 필요합니다.' });
+
+    const { title, content, author } = req.body;
+    if (!title || !content || !author) {
       return res.status(400).json({ error: '필수 정보를 모두 입력해주세요.' });
     }
 
     const { data: newPost, error } = await supabase
       .from('board_posts')
-      .insert([{ title, content, author, password }])
+      .insert([{ title, content, author, password: `owner:${user.id}` }])
       .select('id, title, author, created_at, views')
       .single();
 
     if (error) throw error;
+    await recordActivity({ eventType: 'board_create', userId: user.id, metadata: { postId: newPost.id } });
     res.status(201).json(newPost);
   } catch (err) {
     console.error('게시글 작성 오류:', err);
@@ -1304,22 +1377,26 @@ app.post('/api/board', async (req, res) => {
 app.put('/api/board/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, content, password } = req.body;
+    const user = await getAuthenticatedUser(req);
+    if (!user) return res.status(401).json({ error: '로그인이 필요합니다.' });
+    const { title, content } = req.body;
 
     const { data: post, error: getErr } = await supabase.from('board_posts').select('password').eq('id', id).single();
     if (getErr || !post) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
 
-    if (post.password !== password) return res.status(403).json({ error: '비밀번호가 일치하지 않습니다.' });
+    if (!(await canManageBoardRecord(post.password, user))) {
+      return res.status(403).json({ error: '이 게시글을 수정할 권한이 없습니다.' });
+    }
 
     const { data: updated, error: updateErr } = await supabase
       .from('board_posts')
       .update({ title, content })
       .eq('id', id)
-      .select()
+      .select('id, title, content, author, views, created_at')
       .single();
 
     if (updateErr) throw updateErr;
-    res.json(updated);
+    res.json({ ...updated, can_manage: true });
   } catch (err) {
     console.error('게시글 수정 오류:', err);
     res.status(500).json({ error: '게시글을 수정할 수 없습니다.' });
@@ -1330,16 +1407,20 @@ app.put('/api/board/:id', async (req, res) => {
 app.delete('/api/board/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const password = req.body.password || req.query.password;
+    const user = await getAuthenticatedUser(req);
+    if (!user) return res.status(401).json({ error: '로그인이 필요합니다.' });
 
     const { data: post, error: getErr } = await supabase.from('board_posts').select('password').eq('id', id).single();
     if (getErr || !post) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
 
-    if (post.password !== password) return res.status(403).json({ error: '비밀번호가 일치하지 않습니다.' });
+    if (!(await canManageBoardRecord(post.password, user))) {
+      return res.status(403).json({ error: '이 게시글을 삭제할 권한이 없습니다.' });
+    }
 
     const { error: deleteErr } = await supabase.from('board_posts').delete().eq('id', id);
     if (deleteErr) throw deleteErr;
 
+    await recordActivity({ eventType: 'board_delete', userId: user.id, metadata: { postId: id } });
     res.json({ success: true, message: '삭제되었습니다.' });
   } catch (err) {
     console.error('게시글 삭제 오류:', err);

@@ -202,6 +202,8 @@ function MainApp() {
   const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [newPlaylistDesc, setNewPlaylistDesc] = useState('');
+  const [playlistPendingDelete, setPlaylistPendingDelete] = useState(null);
+  const [isDeletingPlaylist, setIsDeletingPlaylist] = useState(false);
   
   // Playlist picker state
   const [playlistTargetSong, setPlaylistTargetSong] = useState(null);
@@ -243,7 +245,6 @@ function MainApp() {
   const [boardComments, setBoardComments] = useState([]);
   const [boardTitle, setBoardTitle] = useState('');
   const [boardAuthor, setBoardAuthor] = useState('');
-  const [boardPassword, setBoardPassword] = useState('');
   
   // 노래 만들기 게시판 상태
   const [songRequests, setSongRequests] = useState([]);
@@ -1089,7 +1090,8 @@ function MainApp() {
   // --- Board Handlers ---
   const handleBoardSubmit = async (e) => {
     e.preventDefault();
-    if (!boardTitle || !boardContent || !boardAuthor || !boardPassword) {
+    if (!requireLogin()) return;
+    if (!boardTitle || !boardContent || !boardAuthor) {
       showToast('모든 항목을 입력해주세요.');
       return;
     }
@@ -1103,12 +1105,14 @@ function MainApp() {
 
       const res = await apiFetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${userSession?.access_token || ''}`
+        },
         body: JSON.stringify({
           title: boardTitle,
           content: boardContent,
-          author: boardAuthor,
-          password: boardPassword
+          author: boardAuthor
         })
       });
 
@@ -1128,7 +1132,10 @@ function MainApp() {
 
   const handleReadPost = async (post) => {
     try {
-      const res = await apiFetch(`${API_BASE_URL}/api/board/${post.id}`);
+      const headers = userSession?.access_token
+        ? { Authorization: `Bearer ${userSession.access_token}` }
+        : {};
+      const res = await apiFetch(`${API_BASE_URL}/api/board/${post.id}`, { headers });
       if (res.ok) {
         const data = await res.json();
         setActivePost(data);
@@ -1143,13 +1150,11 @@ function MainApp() {
   };
 
   const handleDeletePost = async (id) => {
-    const pwd = window.prompt("게시글 비밀번호를 입력하세요:");
-    if (!pwd) return;
+    if (!window.confirm('이 게시글을 삭제할까요?')) return;
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/board/${id}`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: pwd })
+        headers: { Authorization: `Bearer ${userSession?.access_token || ''}` }
       });
       if (res.ok) {
         showToast('게시글이 삭제되었습니다.');
@@ -1157,7 +1162,7 @@ function MainApp() {
         fetchBoardPosts();
       } else {
         const data = await res.json();
-        showToast(data.error || '비밀번호가 일치하지 않습니다.');
+        showToast(data.error || '게시글을 삭제할 수 없습니다.');
       }
     } catch (err) {
       console.error(err);
@@ -1169,7 +1174,6 @@ function MainApp() {
     setBoardTitle(activePost.title);
     setBoardContent(activePost.content);
     setBoardAuthor(activePost.author);
-    setBoardPassword('');
     setBoardView('edit');
   };
 
@@ -1671,6 +1675,39 @@ function MainApp() {
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const openDeletePlaylist = (e, playlist) => {
+    e.stopPropagation();
+    setPlaylistPendingDelete(playlist);
+  };
+
+  const handleDeletePlaylist = async () => {
+    if (!playlistPendingDelete || !userSession?.access_token || isDeletingPlaylist) return;
+
+    setIsDeletingPlaylist(true);
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/playlists/${playlistPendingDelete.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${userSession.access_token}` }
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showToast(data.error || '플레이리스트를 삭제하지 못했습니다.');
+        return;
+      }
+
+      setPlaylists(prev => prev.filter(playlist => playlist.id !== playlistPendingDelete.id));
+      if (selectedPlaylist?.id === playlistPendingDelete.id) setSelectedPlaylist(null);
+      showToast(`플레이리스트 '${playlistPendingDelete.name}'이(가) 삭제되었습니다.`);
+      setPlaylistPendingDelete(null);
+    } catch (err) {
+      console.error(err);
+      showToast('서버 연결 문제로 플레이리스트를 삭제하지 못했습니다.');
+    } finally {
+      setIsDeletingPlaylist(false);
     }
   };
 
@@ -2238,7 +2275,7 @@ function MainApp() {
           <li>
             <div 
               className={`nav-item ${currentView === 'board' ? 'active' : ''}`}
-              onClick={() => { if (requireLogin()) { setCurrentView('board'); setSelectedPlaylist(null); closeMobileMenu(); } }}
+              onClick={() => { setCurrentView('board'); setSelectedPlaylist(null); closeMobileMenu(); }}
             >
               <MessageSquare className="icon" />
               <span>자유게시판</span>
@@ -2887,6 +2924,15 @@ function MainApp() {
                   <div className="playlist-grid">
                     {playlists.map(pl => (
                       <div className="playlist-card" key={pl.id} onClick={() => selectPlaylistToView(pl)}>
+                        <button
+                          type="button"
+                          className="playlist-delete-button"
+                          onClick={(e) => openDeletePlaylist(e, pl)}
+                          aria-label={`${pl.name} 플레이리스트 삭제`}
+                          title="플레이리스트 삭제"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                         <ListMusic className="playlist-folder-icon" />
                         <div>
                           <div className="playlist-name">{pl.name}</div>
@@ -3305,10 +3351,10 @@ function MainApp() {
                         <button 
                           className="play-btn-premium"
                           onClick={() => {
+                            if (!requireLogin()) return;
                             setBoardTitle('');
                             setBoardContent('');
                             setBoardAuthor('');
-                            setBoardPassword('');
                             setBoardView('write');
                           }}
                         >
@@ -3362,15 +3408,9 @@ function MainApp() {
                         <label>제목 *</label>
                         <input className="form-control" value={boardTitle} onChange={e => setBoardTitle(e.target.value)} required placeholder="제목을 입력하세요" />
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                        <div className="form-group">
-                          <label>작성자 (닉네임) *</label>
-                          <input className="form-control" value={boardAuthor} onChange={e => setBoardAuthor(e.target.value)} required placeholder="닉네임" />
-                        </div>
-                        <div className="form-group">
-                          <label>비밀번호 *</label>
-                          <input type="password" className="form-control" value={boardPassword} onChange={e => setBoardPassword(e.target.value)} required placeholder="수정/삭제용 비밀번호" />
-                        </div>
+                      <div className="form-group">
+                        <label>작성자 (닉네임) *</label>
+                        <input className="form-control" value={boardAuthor} onChange={e => setBoardAuthor(e.target.value)} required placeholder="닉네임" />
                       </div>
                       <div className="form-group">
                         <label>내용 *</label>
@@ -3400,10 +3440,12 @@ function MainApp() {
                     
                     <div className="board-read-actions" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '40px' }}>
                       <button className="btn-secondary" onClick={() => { setBoardView('list'); fetchBoardPosts(); }}>목록으로</button>
-                      <div style={{ display: 'flex', gap: '12px' }}>
-                        <button className="btn-secondary" onClick={handleEditPostClick}><Edit2 size={16}/> 수정</button>
-                        <button className="btn-secondary" style={{ color: '#ff6b6b' }} onClick={() => handleDeletePost(activePost.id)}><Trash2 size={16}/> 삭제</button>
-                      </div>
+                      {activePost.can_manage && (
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                          <button className="btn-secondary" onClick={handleEditPostClick}><Edit2 size={16}/> 수정</button>
+                          <button className="btn-secondary" style={{ color: '#ff6b6b' }} onClick={() => handleDeletePost(activePost.id)}><Trash2 size={16}/> 삭제</button>
+                        </div>
+                      )}
                     </div>
 
                     <div className="board-comments" style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '32px' }}>
@@ -3807,6 +3849,41 @@ function MainApp() {
                 <button type="submit" className="btn-primary-glow">생성</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Playlist Delete Confirmation Modal */}
+      {playlistPendingDelete && (
+        <div
+          className="modal-overlay"
+          onClick={() => { if (!isDeletingPlaylist) setPlaylistPendingDelete(null); }}
+        >
+          <div className="modal-content playlist-delete-confirm" onClick={(e) => e.stopPropagation()}>
+            <div className="playlist-delete-icon"><Trash2 size={24} /></div>
+            <h3>플레이리스트를 삭제할까요?</h3>
+            <p>
+              <strong>{playlistPendingDelete.name}</strong> 플레이리스트가 삭제됩니다.
+              <br />플레이리스트 안의 원본 음원은 삭제되지 않습니다.
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={isDeletingPlaylist}
+                onClick={() => setPlaylistPendingDelete(null)}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                className="playlist-delete-confirm-button"
+                disabled={isDeletingPlaylist}
+                onClick={handleDeletePlaylist}
+              >
+                {isDeletingPlaylist ? '삭제 중...' : '삭제하기'}
+              </button>
+            </div>
           </div>
         </div>
       )}
