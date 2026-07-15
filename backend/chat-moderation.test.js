@@ -29,6 +29,14 @@ test('blocks sexual, advertising, personal information, and spam patterns', () =
   assert.equal(moderateChatMessage('도배도배도배도배').code, 'spam');
 });
 
+test('allows common Korean chat reactions without weakening spam blocking', () => {
+  assert.equal(moderateChatMessage('ㅋㅋㅋㅋㅋㅋㅋㅋ').allowed, true);
+  assert.equal(moderateChatMessage('오늘 노래 좋다ㅎㅎㅎㅎㅎ').allowed, true);
+  assert.equal(moderateChatMessage('ㅠㅠㅠㅠㅠ').allowed, true);
+  assert.equal(moderateChatMessage('가가가가가가가').code, 'spam');
+  assert.equal(moderateChatMessage('도배도배도배도배').code, 'spam');
+});
+
 test('enforces the 200 character limit and moderates nicknames', () => {
   assert.equal(moderateChatMessage('가'.repeat(MAX_CHAT_LENGTH + 1)).code, 'too_long');
   assert.equal(moderateChatNickname(' 음악 친구 '), '음악 친구');

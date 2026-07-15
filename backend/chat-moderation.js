@@ -32,28 +32,35 @@ const LINK_OR_AD_PATTERN = /(?:https?:\/\/|www\.|t\.me\/|discord\.gg\/|오픈채
 const PHONE_PATTERN = /(?:^|\D)(?:01[016789][\s.-]?)?\d{3,4}[\s.-]?\d{4}(?:\D|$)/u;
 const REPEATED_CHARACTER_PATTERN = /(.)\1{6,}/u;
 const REPEATED_PHRASE_PATTERN = /(.{2,12})\1{3,}/u;
+const CHAT_REACTION_RUN_PATTERN = /[ㅋㅎㅠㅜ]{2,}/gu;
 
 function block(code, message) {
   return { allowed: false, code, message };
 }
 
 function moderateChatMessage(value) {
-  const content = String(value || '').normalize('NFKC').trim();
+  const content = String(value || '').trim();
+  const normalizedContent = content.normalize('NFKC');
 
   if (!content) return block('empty', '메시지를 입력해 주세요.');
   if (content.length > MAX_CHAT_LENGTH) {
     return block('too_long', `메시지는 ${MAX_CHAT_LENGTH}자까지 입력할 수 있습니다.`);
   }
-  if (LINK_OR_AD_PATTERN.test(content)) {
+  if (LINK_OR_AD_PATTERN.test(normalizedContent)) {
     return block('advertising', '광고·외부 링크가 포함된 메시지는 전송할 수 없습니다.');
   }
-  if (PHONE_PATTERN.test(content)) {
+  if (PHONE_PATTERN.test(normalizedContent)) {
     return block('personal_info', '전화번호 등 개인정보가 포함된 메시지는 전송할 수 없습니다.');
   }
   if ((content.match(/\n/g) || []).length > 4) {
     return block('spam', '과도한 줄바꿈이 포함된 메시지는 전송할 수 없습니다.');
   }
-  if (REPEATED_CHARACTER_PATTERN.test(content) || REPEATED_PHRASE_PATTERN.test(content)) {
+  // ㅋㅋㅋ, ㅎㅎㅎ, ㅠㅠ 같은 일반적인 채팅 감정표현은 반복 도배에서 제외합니다.
+  const spamComparableContent = content.replace(CHAT_REACTION_RUN_PATTERN, '');
+  if (
+    REPEATED_CHARACTER_PATTERN.test(spamComparableContent)
+    || REPEATED_PHRASE_PATTERN.test(spamComparableContent)
+  ) {
     return block('spam', '반복 도배로 판단되어 메시지가 차단되었습니다.');
   }
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { GripHorizontal, LogIn, MessageCircle, Send, ShieldCheck, SlidersHorizontal, Smile, Users, X } from 'lucide-react';
+import { GripHorizontal, LogIn, LogOut, MessageCircle, Send, ShieldCheck, SlidersHorizontal, Smile, Users, X } from 'lucide-react';
 import { apiFetch } from '../apiClient';
 import { supabase } from '../supabaseClient';
 
@@ -37,12 +37,37 @@ function appendUniqueMessage(messages, nextMessage) {
   return [...messages, nextMessage].slice(-100);
 }
 
+function getPresenceDisplayName(session) {
+  const metadataName = session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name;
+  const emailName = String(session?.user?.email || '').split('@')[0];
+  return String(metadataName || emailName || '음악친구')
+    .normalize('NFKC')
+    .replace(/[^\p{L}\p{N}._ -]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 20) || '음악친구';
+}
+
+function createPresenceNotice(eventType, presence, presenceKey) {
+  const nickname = String(presence?.nickname || '음악친구').slice(0, 20);
+  return {
+    id: `presence-${eventType}-${presence?.presence_ref || presenceKey}-${Date.now()}`,
+    type: 'presence',
+    presence_event: eventType,
+    content: eventType === 'join'
+      ? `${nickname}님이 접속했습니다.`
+      : `${nickname}님이 로그아웃했습니다.`,
+    created_at: new Date().toISOString(),
+  };
+}
+
 function getSavedOpacity() {
   const saved = Number.parseInt(localStorage.getItem('musicdrive_chat_opacity') || '', 10);
   return Number.isFinite(saved) ? Math.min(100, Math.max(15, saved)) : 94;
 }
 
 export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) {
+  const presenceDisplayName = getPresenceDisplayName(session);
   const [messages, setMessages] = useState([]);
   const [onlineCount, setOnlineCount] = useState(0);
   const [draft, setDraft] = useState('');
@@ -62,6 +87,7 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
 
     let active = true;
     let channel = null;
+    let hasSyncedPresence = false;
 
     const connectRealtime = async () => {
       try {
@@ -83,6 +109,17 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
               .filter((presences) => Array.isArray(presences) && presences.length > 0)
               .length;
             setOnlineCount(connectedVisitors);
+            hasSyncedPresence = true;
+          })
+          .on('presence', { event: 'join' }, ({ key, currentPresences, newPresences }) => {
+            if (!active || !hasSyncedPresence || (currentPresences?.length || 0) > 0) return;
+            const nextNotice = createPresenceNotice('join', newPresences?.[0], key);
+            setMessages((current) => appendUniqueMessage(current, nextNotice));
+          })
+          .on('presence', { event: 'leave' }, ({ key, currentPresences, leftPresences }) => {
+            if (!active || !hasSyncedPresence || (currentPresences?.length || 0) > 0) return;
+            const nextNotice = createPresenceNotice('leave', leftPresences?.[0], key);
+            setMessages((current) => appendUniqueMessage(current, nextNotice));
           })
           .on('broadcast', { event: 'chat_message' }, ({ payload: nextMessage }) => {
             if (!active) return;
@@ -92,7 +129,10 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
             if (!active || !channel) return;
             if (status === 'SUBSCRIBED') {
               setConnectionState('connected');
-              await channel.track({ online_at: new Date().toISOString() });
+              await channel.track({
+                online_at: new Date().toISOString(),
+                nickname: presenceDisplayName,
+              });
             } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
               setConnectionState('error');
               setSystemNotice('실시간 연결이 잠시 불안정합니다. 자동으로 다시 연결합니다.');
@@ -115,7 +155,7 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
         supabase.removeChannel(channel);
       }
     };
-  }, [session?.access_token, session?.user?.id]);
+  }, [presenceDisplayName, session?.access_token, session?.user?.id]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -281,6 +321,17 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
               </div>
             )}
             {messages.map((message) => {
+              if (message.type === 'presence') {
+                const PresenceIcon = message.presence_event === 'join' ? LogIn : LogOut;
+                return (
+                  <div className={`live-chat-presence-notice ${message.presence_event}`} key={message.id}>
+                    <PresenceIcon size={12} />
+                    <span>{message.content}</span>
+                    <time>{formatChatTime(message.created_at)}</time>
+                  </div>
+                );
+              }
+
               const isMine = message.user_id === session.user.id;
               return (
                 <article className={`live-chat-message ${isMine ? 'mine' : ''}`} key={message.id}>

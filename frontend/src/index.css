@@ -1050,6 +1050,32 @@ body {
   white-space: pre-wrap;
 }
 
+.live-chat-presence-notice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin: 5px 3px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  color: #a1a1aa;
+  background: rgba(255, 255, 255, 0.025);
+  font-size: 9px;
+}
+
+.live-chat-presence-notice.join svg {
+  color: #4ade80;
+}
+
+.live-chat-presence-notice.leave svg {
+  color: #fda4af;
+}
+
+.live-chat-presence-notice time {
+  color: #71717a;
+  font-size: 8px;
+}
+
 .live-chat-empty,
 .live-chat-login {
   display: flex;
