@@ -39,7 +39,7 @@ function appendUniqueMessage(messages, nextMessage) {
 
 function getSavedOpacity() {
   const saved = Number.parseInt(localStorage.getItem('musicdrive_chat_opacity') || '', 10);
-  return Number.isFinite(saved) ? Math.min(100, Math.max(65, saved)) : 94;
+  return Number.isFinite(saved) ? Math.min(100, Math.max(15, saved)) : 94;
 }
 
 export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) {
@@ -204,6 +204,8 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
         left: `${position.x}px`,
         top: `${position.y}px`,
         '--chat-panel-opacity': chatOpacity / 100,
+        '--chat-panel-blur': `${Math.max(0, Math.round((chatOpacity - 15) * 0.16))}px`,
+        '--chat-chrome-opacity': Math.max(0.08, (chatOpacity / 100) * 0.58),
       }}
       aria-label="실시간 대화창"
     >
@@ -244,13 +246,18 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
             <div><strong>대화창 투명도</strong><span>{chatOpacity}%</span></div>
             <input
               type="range"
-              min="65"
+              min="15"
               max="100"
               step="1"
               value={chatOpacity}
               onChange={(event) => setChatOpacity(Number(event.target.value))}
               aria-label="대화창 투명도"
             />
+            <div className="live-chat-opacity-scale" aria-hidden="true">
+              <span>뒤 화면 선명</span>
+              <span>대화창 선명</span>
+            </div>
+            <small>15~35%로 낮추면 뒤의 재생·플레이리스트 버튼이 잘 보입니다.</small>
           </div>
         )}
       </header>
