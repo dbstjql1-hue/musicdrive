@@ -230,3 +230,32 @@ CREATE POLICY "MusicDrive chat members publish presence"
       (SELECT realtime.topic()) = 'room:musicdrive:lobby'
       AND realtime.messages.extension = 'presence'
     );
+
+-- 로그인 직후 노출되는 운영 공지입니다. 브라우저는 백엔드 API로만 조회하며,
+-- 작성과 게시 상태 변경은 service_role을 사용하는 관리자 API에서만 처리합니다.
+CREATE TABLE IF NOT EXISTS public.login_notices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT NOT NULL CHECK (char_length(title) BETWEEN 1 AND 100),
+    content TEXT NOT NULL CHECK (char_length(content) BETWEEN 1 AND 4000),
+    notice_type TEXT NOT NULL DEFAULT 'update'
+        CHECK (notice_type IN ('update', 'maintenance', 'announcement')),
+    is_active BOOLEAN NOT NULL DEFAULT FALSE,
+    published_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS login_notices_one_active_idx
+    ON public.login_notices (is_active)
+    WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS login_notices_created_at_idx
+    ON public.login_notices (created_at DESC);
+
+ALTER TABLE public.login_notices ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.login_notices FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.login_notices TO service_role;
+
+DROP POLICY IF EXISTS "Service role manages login notices" ON public.login_notices;
+CREATE POLICY "Service role manages login notices"
+    ON public.login_notices FOR ALL TO service_role
+    USING (true) WITH CHECK (true);

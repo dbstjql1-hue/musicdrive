@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Activity,
   BarChart3,
@@ -9,6 +9,7 @@ import {
   Headphones,
   ListMusic,
   Lock,
+  Megaphone,
   Music,
   RefreshCw,
   Search,
@@ -337,6 +338,173 @@ function UploadPanel(props) {
   );
 }
 
+const noticeTypeLabels = {
+  update: '업데이트',
+  maintenance: '점검 안내',
+  announcement: '일반 공지',
+};
+
+function NoticePanel({ apiBaseUrl, adminPassword }) {
+  const [notices, setNotices] = useState([]);
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [noticeType, setNoticeType] = useState('update');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [feedback, setFeedback] = useState('');
+
+  const loadNotices = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/admin/notices`, {
+        headers: { 'x-admin-password': adminPassword }
+      });
+      const data = await response.json().catch(() => []);
+      if (!response.ok) throw new Error(data.error || '공지 목록을 불러오지 못했습니다.');
+      setNotices(Array.isArray(data) ? data : []);
+    } catch (error) {
+      setFeedback(error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    fetch(`${apiBaseUrl}/api/admin/notices`, {
+      headers: { 'x-admin-password': adminPassword }
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => []);
+        if (!response.ok) throw new Error(data.error || '공지 목록을 불러오지 못했습니다.');
+        return data;
+      })
+      .then((data) => {
+        if (active) setNotices(Array.isArray(data) ? data : []);
+      })
+      .catch((error) => {
+        if (active) setFeedback(error.message);
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => { active = false; };
+  }, [adminPassword, apiBaseUrl]);
+
+  const publishNotice = async (event) => {
+    event.preventDefault();
+    if (!title.trim() || !content.trim() || isSaving) return;
+    setIsSaving(true);
+    setFeedback('');
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/admin/notices`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-password': adminPassword
+        },
+        body: JSON.stringify({ title, content, noticeType })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || '공지사항을 게시하지 못했습니다.');
+      setTitle('');
+      setContent('');
+      setNoticeType('update');
+      setFeedback('새 공지가 게시되었습니다. 다음 로그인부터 회원에게 표시됩니다.');
+      await loadNotices();
+    } catch (error) {
+      setFeedback(error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const changeNoticeStatus = async (notice) => {
+    setFeedback('');
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/admin/notices/${notice.id}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-password': adminPassword
+        },
+        body: JSON.stringify({ isActive: !notice.is_active })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || '게시 상태를 변경하지 못했습니다.');
+      setFeedback(data.is_active ? '선택한 공지를 다시 게시했습니다.' : '로그인 공지 노출을 중지했습니다.');
+      await loadNotices();
+    } catch (error) {
+      setFeedback(error.message);
+    }
+  };
+
+  return (
+    <div className="admin-panel-stack admin-notice-workspace">
+      <section className="admin-section admin-notice-editor">
+        <div className="admin-section-heading">
+          <div><span>Login announcement</span><h2>로그인 공지 작성</h2></div>
+          <small>게시하면 기존 공지는 자동으로 내려가고 최신 공지만 로그인 직후 한 번 표시됩니다.</small>
+        </div>
+        <form onSubmit={publishNotice}>
+          <div className="admin-notice-type-tabs" role="radiogroup" aria-label="공지 유형">
+            {Object.entries(noticeTypeLabels).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={noticeType === value ? 'active' : ''}
+                onClick={() => setNoticeType(value)}
+                role="radio"
+                aria-checked={noticeType === value}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <label className="admin-notice-field">
+            <span>공지 제목</span>
+            <input value={title} onChange={(event) => setTitle(event.target.value.slice(0, 100))} placeholder="예: Musicdrive 새 기능 업데이트 안내" required />
+            <small>{title.length}/100</small>
+          </label>
+          <label className="admin-notice-field">
+            <span>공지 내용</span>
+            <textarea value={content} onChange={(event) => setContent(event.target.value.slice(0, 4000))} placeholder="수정 내용이나 업그레이드 내용을 작성하세요." required />
+            <small>{content.length}/4,000</small>
+          </label>
+          <div className="admin-notice-submit-row">
+            <span className={feedback.includes('못') || feedback.includes('수 없') ? 'error' : ''}>{feedback}</span>
+            <button type="submit" className="admin-primary-button" disabled={isSaving || !title.trim() || !content.trim()}>
+              <Megaphone size={17} /> {isSaving ? '게시 중' : '공지 게시하기'}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section className="admin-section">
+        <div className="admin-section-heading"><div><span>Notice history</span><h2>공지 이력</h2></div></div>
+        {isLoading ? <LoadingState label="공지 이력을 불러오는 중입니다." /> : (
+          <div className="admin-notice-history">
+            {notices.map((notice) => (
+              <article className={notice.is_active ? 'active' : ''} key={notice.id}>
+                <header>
+                  <div><span>{noticeTypeLabels[notice.notice_type] || '공지'}</span>{notice.is_active && <em>현재 게시 중</em>}</div>
+                  <time>{formatDate(notice.published_at, true)}</time>
+                </header>
+                <h3>{notice.title}</h3>
+                <p>{notice.content}</p>
+                <button type="button" onClick={() => changeNoticeStatus(notice)}>
+                  {notice.is_active ? '게시 중지' : '다시 게시'}
+                </button>
+              </article>
+            ))}
+            {notices.length === 0 && <EmptyState label="작성된 공지사항이 없습니다." />}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 function MembersPanel({ members, stats, onToggleRole, onSelectUser }) {
   const insightById = Object.fromEntries((stats?.userInsights || []).map(item => [item.id, item]));
   const adminCount = members.filter(member => member.role === 'admin').length;
@@ -473,6 +641,7 @@ export function AdminWorkspace(props) {
     { id: 'dashboard', label: '대시보드', icon: BarChart3, refresh: props.fetchStats },
     { id: 'vsstats', label: '투표 통계', icon: Vote, refresh: props.fetchVsStats },
     { id: 'upload', label: '음원 등록', icon: UploadCloud },
+    { id: 'notices', label: '공지사항', icon: Megaphone },
     { id: 'sync', label: '동기화', icon: Database, refresh: props.fetchUnsynced },
     { id: 'members', label: '회원 관리', icon: Users, refresh: props.fetchMembers }
   ];
@@ -496,6 +665,7 @@ export function AdminWorkspace(props) {
         {props.adminTab === 'dashboard' && <DashboardPanel stats={props.adminStats} onSelectUser={openUserInsight} />}
         {props.adminTab === 'vsstats' && <VotePanel data={props.adminVsStats} />}
         {props.adminTab === 'upload' && <UploadPanel {...props.uploadProps} />}
+        {props.adminTab === 'notices' && <NoticePanel apiBaseUrl={props.apiBaseUrl} adminPassword={props.adminPassword} />}
         {props.adminTab === 'members' && <MembersPanel members={props.memberList} stats={props.adminStats} onToggleRole={props.toggleMemberRole} onSelectUser={openUserInsight} />}
         {props.adminTab === 'sync' && <SyncPanel data={props.unsyncedData} isSyncing={props.isSyncing} logs={props.syncLogs} syncComplete={props.syncComplete} onRefresh={props.fetchUnsynced} onRun={props.runSync} apiBaseUrl={props.apiBaseUrl} adminPassword={props.adminPassword} />}
       </main>

@@ -1953,7 +1953,138 @@ app.patch('/api/admin/members/:id/role', async (req, res) => {
   }
 });
 
-// 15.3. 사용자별 상세 청취 및 선호 분석
+// 15.3. 로그인 공지 관리
+app.get('/api/notices/current', async (req, res) => {
+  const user = await getAuthenticatedUser(req);
+  if (!user) return res.status(401).json({ error: '로그인이 필요합니다.' });
+
+  try {
+    const { data, error } = await supabase
+      .from('login_notices')
+      .select('id, title, content, notice_type, published_at, updated_at')
+      .eq('is_active', true)
+      .order('published_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    res.set('Cache-Control', 'no-store');
+    res.json(data || null);
+  } catch (err) {
+    console.error('로그인 공지 조회 오류:', err.message);
+    res.status(500).json({ error: '공지사항을 불러올 수 없습니다.' });
+  }
+});
+
+app.get('/api/admin/notices', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  try {
+    const { data, error } = await supabase
+      .from('login_notices')
+      .select('id, title, content, notice_type, is_active, published_at, created_at, updated_at')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw error;
+    res.set('Cache-Control', 'no-store');
+    res.json(data || []);
+  } catch (err) {
+    console.error('관리자 공지 목록 조회 오류:', err.message);
+    res.status(500).json({ error: '공지사항 목록을 불러올 수 없습니다.' });
+  }
+});
+
+app.post('/api/admin/notices', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const title = String(req.body?.title || '').trim();
+  const content = String(req.body?.content || '').trim();
+  const noticeType = ['update', 'maintenance', 'announcement'].includes(req.body?.noticeType)
+    ? req.body.noticeType
+    : 'update';
+
+  if (!title || title.length > 100) {
+    return res.status(400).json({ error: '제목은 1자 이상 100자 이하로 입력해 주세요.' });
+  }
+  if (!content || content.length > 4000) {
+    return res.status(400).json({ error: '내용은 1자 이상 4,000자 이하로 입력해 주세요.' });
+  }
+
+  try {
+    const now = new Date().toISOString();
+    const { data: created, error: createError } = await supabase
+      .from('login_notices')
+      .insert({
+        title,
+        content,
+        notice_type: noticeType,
+        is_active: false,
+        published_at: now,
+        updated_at: now
+      })
+      .select('id, title, content, notice_type, is_active, published_at, created_at, updated_at')
+      .single();
+    if (createError) throw createError;
+
+    const { error: deactivateError } = await supabase
+      .from('login_notices')
+      .update({ is_active: false, updated_at: now })
+      .neq('id', created.id)
+      .eq('is_active', true);
+    if (deactivateError) throw deactivateError;
+
+    const { data, error: activateError } = await supabase
+      .from('login_notices')
+      .update({ is_active: true, published_at: now, updated_at: now })
+      .eq('id', created.id)
+      .select('id, title, content, notice_type, is_active, published_at, created_at, updated_at')
+      .single();
+    if (activateError) throw activateError;
+
+    res.status(201).json(data);
+  } catch (err) {
+    console.error('공지 게시 오류:', err.message);
+    res.status(500).json({ error: '공지사항을 게시할 수 없습니다.' });
+  }
+});
+
+app.patch('/api/admin/notices/:id/status', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  if (typeof req.body?.isActive !== 'boolean') {
+    return res.status(400).json({ error: '게시 상태가 올바르지 않습니다.' });
+  }
+
+  try {
+    const now = new Date().toISOString();
+    if (req.body.isActive) {
+      const { error: deactivateError } = await supabase
+        .from('login_notices')
+        .update({ is_active: false, updated_at: now })
+        .neq('id', req.params.id)
+        .eq('is_active', true);
+      if (deactivateError) throw deactivateError;
+    }
+
+    const updates = {
+      is_active: req.body.isActive,
+      updated_at: now,
+      ...(req.body.isActive ? { published_at: now } : {})
+    };
+    const { data, error } = await supabase
+      .from('login_notices')
+      .update(updates)
+      .eq('id', req.params.id)
+      .select('id, title, content, notice_type, is_active, published_at, created_at, updated_at')
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: '공지사항을 찾을 수 없습니다.' });
+    res.json(data);
+  } catch (err) {
+    console.error('공지 상태 변경 오류:', err.message);
+    res.status(500).json({ error: '공지사항 상태를 변경할 수 없습니다.' });
+  }
+});
+
+// 15.4. 사용자별 상세 청취 및 선호 분석
 app.get('/api/admin/users/:id/insights', async (req, res) => {
   if (!requireAdmin(req, res)) return;
 

@@ -41,6 +41,7 @@ import { AdminWorkspace } from './components/AdminWorkspace';
 import { GenreHeroVideo } from './components/GenreHeroVideo';
 import { PersonalDashboard } from './components/PersonalDashboard';
 import { LiveChatPanel } from './components/LiveChatPanel';
+import { LoginNoticeModal } from './components/LoginNoticeModal';
 import './App.css';
 import mascotImg from './assets/mascot.png';
 import { getGenreHeroVideo } from './config/genreHeroVideos';
@@ -75,6 +76,7 @@ const SONG_REQUEST_TEMPLATE = `곡 주제 및 제목
 
 const NEW_RELEASE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 const DAILY_AUTH_EXPIRY_KEY = 'musicdrive_daily_auth_expires_at';
+const LOGIN_NOTICE_SEEN_PREFIX = 'musicdrive_login_notice_seen_';
 
 function getNextLocalMidnight(now = new Date()) {
   return new Date(
@@ -99,6 +101,12 @@ function getOrCreateDailyAuthExpiry() {
 
 function clearDailyAuthExpiry() {
   localStorage.removeItem(DAILY_AUTH_EXPIRY_KEY);
+}
+
+function clearLoginNoticeSeenState() {
+  Object.keys(sessionStorage)
+    .filter((key) => key.startsWith(LOGIN_NOTICE_SEEN_PREFIX))
+    .forEach((key) => sessionStorage.removeItem(key));
 }
 
 // 브라우저 로컬 저장소 세션 ID 로드 또는 생성 (좋아요 중복 방지용)
@@ -139,6 +147,7 @@ function MainApp() {
   const [userSession, setUserSession] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [loginNotice, setLoginNotice] = useState(null);
 
   const requireLogin = () => {
     if (!userSession) {
@@ -322,6 +331,7 @@ function MainApp() {
         const { error } = await supabase.auth.signOut({ scope: 'local' });
         if (error) throw error;
         clearDailyAuthExpiry();
+        clearLoginNoticeSeenState();
       } catch (error) {
         // 실패 시 만료 시각을 남겨 두어 다음 포커스/새로고침 때 다시 종료합니다.
         if (import.meta.env.DEV) console.debug('Daily auth expiry sign-out retry scheduled:', error);
@@ -400,6 +410,42 @@ function MainApp() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!userSession?.access_token || !userSession?.user?.id) {
+      setLoginNotice(null);
+      return undefined;
+    }
+
+    let active = true;
+    const fetchLoginNotice = async () => {
+      try {
+        const response = await apiFetch(`${API_BASE_URL}/api/notices/current`, {
+          headers: { Authorization: `Bearer ${userSession.access_token}` }
+        });
+        if (!response.ok) return;
+        const notice = await response.json();
+        if (!active || !notice?.id) return;
+        const seenKey = `${LOGIN_NOTICE_SEEN_PREFIX}${userSession.user.id}_${notice.id}`;
+        if (sessionStorage.getItem(seenKey) !== '1') setLoginNotice(notice);
+      } catch (error) {
+        if (import.meta.env.DEV) console.debug('Login notice fetch skipped:', error);
+      }
+    };
+
+    fetchLoginNotice();
+    return () => { active = false; };
+  }, [userSession?.access_token, userSession?.user?.id]);
+
+  const closeLoginNotice = () => {
+    if (loginNotice?.id && userSession?.user?.id) {
+      sessionStorage.setItem(
+        `${LOGIN_NOTICE_SEEN_PREFIX}${userSession.user.id}_${loginNotice.id}`,
+        '1'
+      );
+    }
+    setLoginNotice(null);
+  };
+
   const fetchUserProfile = async (userId) => {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     if (data) setUserProfile(data);
@@ -430,6 +476,7 @@ function MainApp() {
       return;
     }
     clearDailyAuthExpiry();
+    clearLoginNoticeSeenState();
     setUserSession(null);
     setUserProfile(null);
   };
@@ -3621,6 +3668,8 @@ function MainApp() {
         session={userSession}
         onLoginRequest={handleGoogleLogin}
       />
+
+      <LoginNoticeModal notice={loginNotice} onClose={closeLoginNotice} />
 
       {/* Floating Bottom Music Player */}
       <footer 

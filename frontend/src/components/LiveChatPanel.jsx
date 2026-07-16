@@ -36,10 +36,10 @@ const EMOJI_CATEGORIES = [
 ];
 
 function getDefaultPosition() {
-  if (typeof window === 'undefined') return { x: 24, y: 80 };
+  if (typeof window === 'undefined') return { x: 24, y: 130 };
   return {
     x: Math.max(16, window.innerWidth - CHAT_PANEL_WIDTH - 28),
-    y: Math.max(16, Math.min(90, window.innerHeight - CHAT_PANEL_HEIGHT - PLAYER_SAFE_SPACE)),
+    y: Math.max(16, Math.min(130, window.innerHeight - CHAT_PANEL_HEIGHT - PLAYER_SAFE_SPACE)),
   };
 }
 
@@ -101,6 +101,11 @@ function getPresenceDisplayName(session) {
     .slice(0, 20) || '음악친구';
 }
 
+function getCurrentDeviceType() {
+  if (typeof navigator === 'undefined') return 'pc';
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ? 'mobile' : 'pc';
+}
+
 function createPresenceNotice(eventType, presence, presenceKey) {
   const nickname = String(presence?.nickname || '음악친구').slice(0, 20);
   return {
@@ -125,8 +130,10 @@ function getSavedOpacity() {
 
 export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) {
   const presenceDisplayName = getPresenceDisplayName(session);
+  const currentDeviceType = getCurrentDeviceType();
   const [messages, setMessages] = useState([]);
   const [onlineCount, setOnlineCount] = useState(0);
+  const [onlineUsers, setOnlineUsers] = useState([]);
   const [draft, setDraft] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [connectionState, setConnectionState] = useState(session?.user?.id ? 'connecting' : 'login');
@@ -138,6 +145,7 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
   const [chatOpacity, setChatOpacity] = useState(getSavedOpacity);
   const [isOpacityOpen, setIsOpacityOpen] = useState(false);
   const [isEmojiOpen, setIsEmojiOpen] = useState(false);
+  const [isParticipantsOpen, setIsParticipantsOpen] = useState(false);
   const [emojiCategory, setEmojiCategory] = useState(EMOJI_CATEGORIES[0].id);
   const panelRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -146,6 +154,8 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
   const inputRef = useRef(null);
   const emojiButtonRef = useRef(null);
   const emojiPickerRef = useRef(null);
+  const participantsButtonRef = useRef(null);
+  const participantsPopoverRef = useRef(null);
   const activeEmojiCategory = EMOJI_CATEGORIES.find((category) => category.id === emojiCategory)
     || EMOJI_CATEGORIES[0];
 
@@ -172,10 +182,21 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
           .on('presence', { event: 'sync' }, () => {
             if (!active || !channel) return;
             const presenceState = channel.presenceState();
-            const connectedVisitors = Object.values(presenceState)
-              .filter((presences) => Array.isArray(presences) && presences.length > 0)
-              .length;
-            setOnlineCount(connectedVisitors);
+            const connectedUsers = Object.entries(presenceState)
+              .flatMap(([userId, presences]) => {
+                if (!Array.isArray(presences) || presences.length === 0) return [];
+                const latestPresence = presences[presences.length - 1];
+                return [{
+                  id: userId,
+                  nickname: String(latestPresence?.nickname || '음악친구').slice(0, 20),
+                  device_type: latestPresence?.device_type === 'mobile' ? 'mobile' : 'pc',
+                  is_me: userId === session.user.id,
+                }];
+              })
+              .sort((first, second) => Number(second.is_me) - Number(first.is_me)
+                || first.nickname.localeCompare(second.nickname, 'ko'));
+            setOnlineUsers(connectedUsers);
+            setOnlineCount(connectedUsers.length);
             hasSyncedPresence = true;
           })
           .on('presence', { event: 'join' }, ({ key, currentPresences, newPresences }) => {
@@ -199,6 +220,7 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
               await channel.track({
                 online_at: new Date().toISOString(),
                 nickname: presenceDisplayName,
+                device_type: currentDeviceType,
               });
             } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
               setConnectionState('error');
@@ -222,7 +244,7 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
         supabase.removeChannel(channel);
       }
     };
-  }, [presenceDisplayName, session?.access_token, session?.user?.id]);
+  }, [currentDeviceType, presenceDisplayName, session?.access_token, session?.user?.id]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -266,6 +288,28 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
       document.removeEventListener('keydown', handleEscape);
     };
   }, [isEmojiOpen]);
+
+  useEffect(() => {
+    if (!isParticipantsOpen) return undefined;
+
+    const handleOutsidePointer = (event) => {
+      if (
+        participantsPopoverRef.current?.contains(event.target)
+        || participantsButtonRef.current?.contains(event.target)
+      ) return;
+      setIsParticipantsOpen(false);
+    };
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setIsParticipantsOpen(false);
+    };
+
+    document.addEventListener('pointerdown', handleOutsidePointer);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsidePointer);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isParticipantsOpen]);
 
   const handlePointerDown = (event) => {
     if (window.innerWidth <= 768 || event.target.closest('button, input')) return;
@@ -431,7 +475,21 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
           </div>
         </div>
         <div className="live-chat-header-actions">
-          <span className="live-chat-online"><Users size={14} /> 현재 {onlineCount}명</span>
+          <button
+            ref={participantsButtonRef}
+            type="button"
+            className={`live-chat-online ${isParticipantsOpen ? 'active' : ''}`}
+            onClick={() => {
+              setIsParticipantsOpen((open) => !open);
+              setIsOpacityOpen(false);
+              setIsEmojiOpen(false);
+            }}
+            aria-label={`현재 접속자 ${onlineCount}명 보기`}
+            aria-expanded={isParticipantsOpen}
+            aria-haspopup="dialog"
+          >
+            <Users size={14} /> 현재 {onlineCount}명
+          </button>
           <GripHorizontal className="live-chat-grip" size={19} aria-hidden="true" />
           <button
             type="button"
@@ -439,6 +497,7 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
             onClick={() => {
               setIsOpacityOpen((open) => !open);
               setIsEmojiOpen(false);
+              setIsParticipantsOpen(false);
             }}
             aria-label="대화창 투명도 설정"
             aria-expanded={isOpacityOpen}
@@ -450,6 +509,44 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
             <X size={18} />
           </button>
         </div>
+        {isParticipantsOpen && (
+          <div
+            ref={participantsPopoverRef}
+            className="live-chat-participants-popover"
+            role="dialog"
+            aria-label="현재 접속자 목록"
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <div className="live-chat-participants-head">
+              <strong>현재 접속자</strong>
+              <span>{onlineUsers.length}명</span>
+            </div>
+            <div className="live-chat-participants-list">
+              {onlineUsers.length > 0 ? onlineUsers.map((user) => {
+                const isMobileDevice = user.device_type === 'mobile';
+                const DeviceIcon = isMobileDevice ? Smartphone : Monitor;
+                return (
+                  <div className="live-chat-participant" key={user.id}>
+                    <span className="live-chat-participant-avatar">
+                      {String(user.nickname || '음').slice(0, 1)}
+                    </span>
+                    <div className="live-chat-participant-copy">
+                      <strong>
+                        {user.nickname}
+                        {user.is_me && <em>나</em>}
+                      </strong>
+                      <span><DeviceIcon size={10} /> {isMobileDevice ? '모바일' : 'PC'}</span>
+                    </div>
+                    <i className="live-chat-participant-dot" title="접속 중" />
+                  </div>
+                );
+              }) : (
+                <div className="live-chat-participants-empty">접속 정보를 불러오는 중입니다.</div>
+              )}
+            </div>
+            <small>접속 정보는 저장되지 않습니다.</small>
+          </div>
+        )}
         {isOpacityOpen && (
           <div className="live-chat-opacity-popover" onPointerDown={(event) => event.stopPropagation()}>
             <div><strong>대화창 투명도</strong><span>{chatOpacity}%</span></div>
@@ -575,6 +672,7 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
                 onClick={() => {
                   setIsEmojiOpen((open) => !open);
                   setIsOpacityOpen(false);
+                  setIsParticipantsOpen(false);
                 }}
                 aria-label="이모티콘 선택"
                 aria-expanded={isEmojiOpen}
