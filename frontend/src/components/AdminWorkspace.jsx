@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Activity,
   BarChart3,
@@ -11,6 +11,7 @@ import {
   Lock,
   Megaphone,
   Music,
+  Pencil,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -349,9 +350,11 @@ function NoticePanel({ apiBaseUrl, adminPassword }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [noticeType, setNoticeType] = useState('update');
+  const [editingNoticeId, setEditingNoticeId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const editorRef = useRef(null);
 
   const loadNotices = async () => {
     setIsLoading(true);
@@ -391,14 +394,40 @@ function NoticePanel({ apiBaseUrl, adminPassword }) {
     return () => { active = false; };
   }, [adminPassword, apiBaseUrl]);
 
-  const publishNotice = async (event) => {
+  const resetEditor = () => {
+    setTitle('');
+    setContent('');
+    setNoticeType('update');
+    setEditingNoticeId(null);
+  };
+
+  const startEditing = (notice) => {
+    setTitle(notice.title);
+    setContent(notice.content);
+    setNoticeType(notice.notice_type);
+    setEditingNoticeId(notice.id);
+    setFeedback('선택한 공지를 수정 중입니다.');
+    editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const cancelEditing = () => {
+    resetEditor();
+    setFeedback('공지 수정을 취소했습니다.');
+  };
+
+  const saveNotice = async (event) => {
     event.preventDefault();
     if (!title.trim() || !content.trim() || isSaving) return;
     setIsSaving(true);
     setFeedback('');
     try {
-      const response = await fetch(`${apiBaseUrl}/api/admin/notices`, {
-        method: 'POST',
+      const isEditing = Boolean(editingNoticeId);
+      const response = await fetch(
+        isEditing
+          ? `${apiBaseUrl}/api/admin/notices/${editingNoticeId}`
+          : `${apiBaseUrl}/api/admin/notices`,
+        {
+        method: isEditing ? 'PATCH' : 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-admin-password': adminPassword
@@ -406,11 +435,15 @@ function NoticePanel({ apiBaseUrl, adminPassword }) {
         body: JSON.stringify({ title, content, noticeType })
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || '공지사항을 게시하지 못했습니다.');
-      setTitle('');
-      setContent('');
-      setNoticeType('update');
-      setFeedback('새 공지가 게시되었습니다. 다음 로그인부터 회원에게 표시됩니다.');
+      if (!response.ok) {
+        throw new Error(data.error || (isEditing ? '공지사항을 수정하지 못했습니다.' : '공지사항을 게시하지 못했습니다.'));
+      }
+      resetEditor();
+      setFeedback(
+        isEditing
+          ? '공지 내용이 수정되었습니다.'
+          : '새 공지가 게시되었습니다. 다음 로그인부터 회원에게 표시됩니다.'
+      );
       await loadNotices();
     } catch (error) {
       setFeedback(error.message);
@@ -441,12 +474,12 @@ function NoticePanel({ apiBaseUrl, adminPassword }) {
 
   return (
     <div className="admin-panel-stack admin-notice-workspace">
-      <section className="admin-section admin-notice-editor">
+      <section className="admin-section admin-notice-editor" ref={editorRef}>
         <div className="admin-section-heading">
-          <div><span>Login announcement</span><h2>로그인 공지 작성</h2></div>
-          <small>게시하면 기존 공지는 자동으로 내려가고 최신 공지만 로그인 직후 한 번 표시됩니다.</small>
+          <div><span>Login announcement</span><h2>{editingNoticeId ? '로그인 공지 수정' : '로그인 공지 작성'}</h2></div>
+          <small>{editingNoticeId ? '내용을 저장하면 기존 게시 상태는 그대로 유지됩니다.' : '게시하면 기존 공지는 자동으로 내려가고 최신 공지만 로그인 직후 한 번 표시됩니다.'}</small>
         </div>
-        <form onSubmit={publishNotice}>
+        <form onSubmit={saveNotice}>
           <div className="admin-notice-type-tabs" role="radiogroup" aria-label="공지 유형">
             {Object.entries(noticeTypeLabels).map(([value, label]) => (
               <button
@@ -473,9 +506,17 @@ function NoticePanel({ apiBaseUrl, adminPassword }) {
           </label>
           <div className="admin-notice-submit-row">
             <span className={feedback.includes('못') || feedback.includes('수 없') ? 'error' : ''}>{feedback}</span>
-            <button type="submit" className="admin-primary-button" disabled={isSaving || !title.trim() || !content.trim()}>
-              <Megaphone size={17} /> {isSaving ? '게시 중' : '공지 게시하기'}
-            </button>
+            <div className="admin-notice-editor-actions">
+              {editingNoticeId && (
+                <button type="button" className="admin-secondary-button" onClick={cancelEditing} disabled={isSaving}>
+                  <X size={16} /> 수정 취소
+                </button>
+              )}
+              <button type="submit" className="admin-primary-button" disabled={isSaving || !title.trim() || !content.trim()}>
+                {editingNoticeId ? <Pencil size={17} /> : <Megaphone size={17} />}
+                {isSaving ? '저장 중' : (editingNoticeId ? '수정 내용 저장' : '공지 게시하기')}
+              </button>
+            </div>
           </div>
         </form>
       </section>
@@ -492,9 +533,14 @@ function NoticePanel({ apiBaseUrl, adminPassword }) {
                 </header>
                 <h3>{notice.title}</h3>
                 <p>{notice.content}</p>
-                <button type="button" onClick={() => changeNoticeStatus(notice)}>
-                  {notice.is_active ? '게시 중지' : '다시 게시'}
-                </button>
+                <div className="admin-notice-history-actions">
+                  <button type="button" onClick={() => startEditing(notice)}>
+                    <Pencil size={13} /> 수정
+                  </button>
+                  <button type="button" onClick={() => changeNoticeStatus(notice)}>
+                    {notice.is_active ? '게시 중지' : '다시 게시'}
+                  </button>
+                </div>
               </article>
             ))}
             {notices.length === 0 && <EmptyState label="작성된 공지사항이 없습니다." />}

@@ -46,6 +46,7 @@ import './App.css';
 import mascotImg from './assets/mascot.png';
 import { getGenreHeroVideo } from './config/genreHeroVideos';
 import { supabase } from './supabaseClient';
+import { loadAudioSourceIfChanged } from './audioSource';
 import { trackActivity } from './analytics';
 import {
   API_BASE_URL,
@@ -75,38 +76,55 @@ const SONG_REQUEST_TEMPLATE = `곡 주제 및 제목
 ( 넣고싶은  가사나 이야기들을 써주시면 됩니다 )`;
 
 const NEW_RELEASE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
-const DAILY_AUTH_EXPIRY_KEY = 'musicdrive_daily_auth_expires_at';
 const LOGIN_NOTICE_SEEN_PREFIX = 'musicdrive_login_notice_seen_';
+const UI_STATE_STORAGE_KEY = 'musicdrive_ui_state';
+const INTRO_SEEN_KEY = 'musicdrive_intro_seen';
+const RESTORABLE_VIEWS = new Set([
+  'home',
+  'search',
+  'playlists',
+  'admin',
+  'vs',
+  'board',
+  'song-requests'
+]);
 
-function getNextLocalMidnight(now = new Date()) {
-  return new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() + 1,
-    0,
-    0,
-    0,
-    0
-  ).getTime();
+function readPersistedUiState() {
+  try {
+    const savedState = JSON.parse(localStorage.getItem(UI_STATE_STORAGE_KEY) || '{}');
+    return {
+      currentView: RESTORABLE_VIEWS.has(savedState.currentView) ? savedState.currentView : 'home',
+      adminTab: typeof savedState.adminTab === 'string' ? savedState.adminTab : 'dashboard'
+    };
+  } catch {
+    return { currentView: 'home', adminTab: 'dashboard' };
+  }
 }
 
-function getOrCreateDailyAuthExpiry() {
-  const savedExpiry = Number(localStorage.getItem(DAILY_AUTH_EXPIRY_KEY));
-  if (Number.isFinite(savedExpiry) && savedExpiry > 0) return savedExpiry;
+function shouldShowIntro() {
+  const hasAuthCallback = window.location.hash.includes('access_token')
+    || new URLSearchParams(window.location.search).has('code');
+  if (hasAuthCallback) {
+    try { localStorage.setItem(INTRO_SEEN_KEY, '1'); } catch { /* use this page only */ }
+    return false;
+  }
 
-  const nextMidnight = getNextLocalMidnight();
-  localStorage.setItem(DAILY_AUTH_EXPIRY_KEY, String(nextMidnight));
-  return nextMidnight;
-}
-
-function clearDailyAuthExpiry() {
-  localStorage.removeItem(DAILY_AUTH_EXPIRY_KEY);
+  try {
+    return localStorage.getItem(INTRO_SEEN_KEY) !== '1';
+  } catch {
+    return true;
+  }
 }
 
 function clearLoginNoticeSeenState() {
   Object.keys(sessionStorage)
     .filter((key) => key.startsWith(LOGIN_NOTICE_SEEN_PREFIX))
     .forEach((key) => sessionStorage.removeItem(key));
+}
+
+function getLoginNoticeSeenKey(userId, notice) {
+  const version = notice?.updated_at || notice?.published_at || 'initial';
+  return `${LOGIN_NOTICE_SEEN_PREFIX}${userId}_${notice?.id}_${version}`;
 }
 
 // 브라우저 로컬 저장소 세션 ID 로드 또는 생성 (좋아요 중복 방지용)
@@ -148,6 +166,7 @@ function MainApp() {
   const [userProfile, setUserProfile] = useState(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [loginNotice, setLoginNotice] = useState(null);
+  const initialUiStateRef = useRef(readPersistedUiState());
   const loginNoticeAccessTokenRef = useRef(null);
   loginNoticeAccessTokenRef.current = userSession?.access_token || null;
 
@@ -161,12 +180,9 @@ function MainApp() {
 
 
   // Navigation & Views
-  const [currentView, setCurrentView] = useState('home'); // 'home', 'search', 'playlists', 'admin'
+  const [currentView, setCurrentView] = useState(initialUiStateRef.current.currentView); // 'home', 'search', 'playlists', 'admin'
   const [selectedPlaylist, setSelectedPlaylist] = useState(null); // 특정 플레이리스트 선택 시 저장
-  const [showIntro, setShowIntro] = useState(
-    !window.location.hash.includes('access_token')
-      && !new URLSearchParams(window.location.search).has('code')
-  );
+  const [showIntro, setShowIntro] = useState(shouldShowIntro);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // Data State
@@ -219,7 +235,7 @@ function MainApp() {
   const [audioFile, setAudioFile] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [adminTab, setAdminTab] = useState('dashboard'); // 'dashboard', 'upload', 'members'
+  const [adminTab, setAdminTab] = useState(initialUiStateRef.current.adminTab); // 'dashboard', 'upload', 'members'
   const [adminStats, setAdminStats] = useState(null);
   const [adminVsStats, setAdminVsStats] = useState(null);
   const [memberList, setMemberList] = useState([]);
@@ -314,100 +330,49 @@ function MainApp() {
 
   useEffect(() => {
     let isMounted = true;
-    let expiryTimerId = null;
-    let isExpirySignOutRunning = false;
 
-    const clearExpiryTimer = () => {
-      if (expiryTimerId !== null) {
-        window.clearTimeout(expiryTimerId);
-        expiryTimerId = null;
-      }
-    };
-
-    const signOutExpiredSession = async () => {
-      if (isExpirySignOutRunning) return;
-      isExpirySignOutRunning = true;
-      clearExpiryTimer();
-      try {
-        // 자정 만료는 현재 기기의 세션만 종료합니다.
-        const { error } = await supabase.auth.signOut({ scope: 'local' });
-        if (error) throw error;
-        clearDailyAuthExpiry();
-        clearLoginNoticeSeenState();
-      } catch (error) {
-        // 실패 시 만료 시각을 남겨 두어 다음 포커스/새로고침 때 다시 종료합니다.
-        if (import.meta.env.DEV) console.debug('Daily auth expiry sign-out retry scheduled:', error);
-        expiryTimerId = window.setTimeout(signOutExpiredSession, 30_000);
-      } finally {
-        if (isMounted) {
-          setUserSession(null);
-          setUserProfile(null);
-        }
-        isExpirySignOutRunning = false;
-      }
-    };
-
-    const scheduleDailySessionExpiry = (session) => {
-      clearExpiryTimer();
-      if (!session) {
-        clearDailyAuthExpiry();
-        return false;
-      }
-
-      const expiresAt = getOrCreateDailyAuthExpiry();
-      const remainingMs = expiresAt - Date.now();
-      if (remainingMs <= 0) {
-        window.setTimeout(signOutExpiredSession, 0);
-        return false;
-      }
-
-      expiryTimerId = window.setTimeout(signOutExpiredSession, remainingMs + 100);
-      return true;
-    };
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const applySession = (session) => {
       if (!isMounted) return;
-      const isSessionValidToday = scheduleDailySessionExpiry(session);
-      setUserSession(isSessionValidToday ? session : null);
-      if (session && isSessionValidToday) {
+      setUserSession(session || null);
+      if (session?.user?.id) {
         fetchUserProfile(session.user.id);
-        // 확실한 타이밍에 해시(토큰) 정리
-        clearAuthCallbackUrl();
-      }
-    }).catch((error) => {
-      if (import.meta.env.DEV) console.debug('Auth session restore skipped:', error);
-    }).finally(() => {
-      clearAuthCallbackUrl();
-      if (isMounted) setIsAuthReady(true);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      const isSessionValidToday = scheduleDailySessionExpiry(session);
-      setUserSession(isSessionValidToday ? session : null);
-      if (session && isSessionValidToday) {
-        fetchUserProfile(session.user.id);
-        // 로그인 성공 후 주소창에 남은 지저분한 해시(토큰) 값 정리
         clearAuthCallbackUrl();
       } else {
         setUserProfile(null);
       }
-    });
+    };
 
-    const validateSessionDate = () => {
-      if (document.visibilityState !== 'visible') return;
-      const savedExpiry = Number(localStorage.getItem(DAILY_AUTH_EXPIRY_KEY));
-      if (Number.isFinite(savedExpiry) && savedExpiry > 0 && Date.now() >= savedExpiry) {
-        signOutExpiredSession();
+    const restoreSession = async ({ markReady = false } = {}) => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        applySession(session);
+      } catch (error) {
+        // 화면 복귀 중 네트워크가 잠깐 끊겨도 기존 로그인 화면을 먼저 지우지 않습니다.
+        if (import.meta.env.DEV) console.debug('Auth session restore skipped:', error);
+      } finally {
+        clearAuthCallbackUrl();
+        if (markReady && isMounted) setIsAuthReady(true);
       }
     };
-    window.addEventListener('focus', validateSessionDate);
-    document.addEventListener('visibilitychange', validateSessionDate);
+
+    restoreSession({ markReady: true });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      applySession(session);
+      if (isMounted) setIsAuthReady(true);
+    });
+
+    const restoreSessionAfterResume = () => {
+      if (document.visibilityState === 'visible') restoreSession();
+    };
+    window.addEventListener('pageshow', restoreSessionAfterResume);
+    document.addEventListener('visibilitychange', restoreSessionAfterResume);
 
     return () => {
       isMounted = false;
-      clearExpiryTimer();
-      window.removeEventListener('focus', validateSessionDate);
-      document.removeEventListener('visibilitychange', validateSessionDate);
+      window.removeEventListener('pageshow', restoreSessionAfterResume);
+      document.removeEventListener('visibilitychange', restoreSessionAfterResume);
       subscription.unsubscribe();
     };
   }, []);
@@ -429,7 +394,7 @@ function MainApp() {
         if (!response.ok) return;
         const notice = await response.json();
         if (!active || !notice?.id) return;
-        const seenKey = `${LOGIN_NOTICE_SEEN_PREFIX}${userId}_${notice.id}`;
+        const seenKey = getLoginNoticeSeenKey(userId, notice);
         if (sessionStorage.getItem(seenKey) !== '1') setLoginNotice(notice);
       } catch (error) {
         if (import.meta.env.DEV) console.debug('Login notice fetch skipped:', error);
@@ -443,7 +408,7 @@ function MainApp() {
   const closeLoginNotice = () => {
     if (loginNotice?.id && userSession?.user?.id) {
       sessionStorage.setItem(
-        `${LOGIN_NOTICE_SEEN_PREFIX}${userSession.user.id}_${loginNotice.id}`,
+        getLoginNoticeSeenKey(userSession.user.id, loginNotice),
         '1'
       );
     }
@@ -479,7 +444,6 @@ function MainApp() {
       showToast('로그아웃 중 오류가 발생했습니다: ' + error.message);
       return;
     }
-    clearDailyAuthExpiry();
     clearLoginNoticeSeenState();
     setUserSession(null);
     setUserProfile(null);
@@ -506,6 +470,14 @@ function MainApp() {
       setIsPlaylistDrawerOpen(false);
     }, 400);
   };
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(UI_STATE_STORAGE_KEY, JSON.stringify({ currentView, adminTab }));
+    } catch {
+      // 저장 공간을 사용할 수 없는 환경에서는 현재 탭에서만 상태를 유지합니다.
+    }
+  }, [adminTab, currentView]);
 
   useEffect(() => {
     trackActivity('page_view', {
@@ -1470,10 +1442,12 @@ function MainApp() {
   // 2. 오디오 코어 동기화 설정
   useEffect(() => {
     const audio = audioRef.current;
+    const audioUrl = activeSong?.audio_url || '';
 
-    if (activeSong) {
-      audio.src = activeSong.audio_url;
-      audio.load();
+    if (audioUrl) {
+      if (!loadAudioSourceIfChanged(audio, audioUrl)) return;
+      setCurrentTime(0);
+      setDuration(0);
       if (isPlaying) {
         audio.play().catch(err => console.log('재생 시작 오류:', err));
       }
@@ -1481,8 +1455,9 @@ function MainApp() {
       audio.pause();
       audio.src = '';
     }
+    // 같은 곡의 재생 수/메타데이터만 바뀐 경우에는 소스를 다시 로드하지 않습니다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSong]);
+  }, [activeSong?.id, activeSong?.audio_url]);
 
   useEffect(() => {
     if (isPlaying) {
@@ -2348,7 +2323,10 @@ function MainApp() {
         poemHTML={introPoemHTML}
         backgroundImageUrl="/intro_bg.jpg"
         boyImageUrl="/intro_character.png"
-        onEnter={() => setShowIntro(false)}
+        onEnter={() => {
+          try { localStorage.setItem(INTRO_SEEN_KEY, '1'); } catch { /* use this page only */ }
+          setShowIntro(false);
+        }}
       />
     );
   }

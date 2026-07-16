@@ -8,6 +8,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { createAssetSyncService } = require('./asset-sync');
 const { selectWeeklyMatch } = require('./weekly-match');
 const { buildUserDashboard } = require('./user-dashboard');
+const { validateNoticePayload } = require('./notice-validation');
 const {
   detectChatDeviceType,
   moderateChatMessage,
@@ -1996,18 +1997,9 @@ app.get('/api/admin/notices', async (req, res) => {
 app.post('/api/admin/notices', async (req, res) => {
   if (!requireAdmin(req, res)) return;
 
-  const title = String(req.body?.title || '').trim();
-  const content = String(req.body?.content || '').trim();
-  const noticeType = ['update', 'maintenance', 'announcement'].includes(req.body?.noticeType)
-    ? req.body.noticeType
-    : 'update';
-
-  if (!title || title.length > 100) {
-    return res.status(400).json({ error: '제목은 1자 이상 100자 이하로 입력해 주세요.' });
-  }
-  if (!content || content.length > 4000) {
-    return res.status(400).json({ error: '내용은 1자 이상 4,000자 이하로 입력해 주세요.' });
-  }
+  const validation = validateNoticePayload(req.body);
+  if (validation.error) return res.status(400).json({ error: validation.error });
+  const { title, content, noticeType } = validation.value;
 
   try {
     const now = new Date().toISOString();
@@ -2044,6 +2036,34 @@ app.post('/api/admin/notices', async (req, res) => {
   } catch (err) {
     console.error('공지 게시 오류:', err.message);
     res.status(500).json({ error: '공지사항을 게시할 수 없습니다.' });
+  }
+});
+
+app.patch('/api/admin/notices/:id', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const validation = validateNoticePayload(req.body);
+  if (validation.error) return res.status(400).json({ error: validation.error });
+  const { title, content, noticeType } = validation.value;
+
+  try {
+    const { data, error } = await supabase
+      .from('login_notices')
+      .update({
+        title,
+        content,
+        notice_type: noticeType,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', req.params.id)
+      .select('id, title, content, notice_type, is_active, published_at, created_at, updated_at')
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: '공지사항을 찾을 수 없습니다.' });
+    res.json(data);
+  } catch (err) {
+    console.error('공지 수정 오류:', err.message);
+    res.status(500).json({ error: '공지사항을 수정할 수 없습니다.' });
   }
 });
 

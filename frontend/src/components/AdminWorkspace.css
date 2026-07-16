@@ -207,6 +207,17 @@
 
 .admin-notice-submit-row > span.error { color: #fb7185; }
 
+.admin-notice-editor-actions,
+.admin-notice-history-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.admin-notice-history-actions {
+  margin-top: 15px;
+}
+
 .admin-notice-history {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -240,11 +251,13 @@
 .admin-notice-history time { color: var(--text-muted); font-size: 8px; }
 .admin-notice-history h3 { margin: 14px 0 8px; font-size: 14px; }
 .admin-notice-history p { max-height: 82px; overflow: hidden; margin: 0; color: var(--text-secondary); font-size: 10px; line-height: 1.65; white-space: pre-wrap; }
-.admin-notice-history article > button { margin-top: 15px; padding: 0; border: 0; color: #c4b5fd; background: transparent; font: inherit; font-size: 9px; font-weight: 750; cursor: pointer; }
-.admin-notice-history article > button:hover { color: #fff; }
+.admin-notice-history-actions button { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; color: #c4b5fd; background: transparent; font: inherit; font-size: 9px; font-weight: 750; cursor: pointer; }
+.admin-notice-history-actions button:hover { color: #fff; }
+.admin-notice-history-actions button + button { padding-left: 9px; border-left: 1px solid var(--border-color); }
 
 @media (max-width: 760px) {
   .admin-notice-history { grid-template-columns: 1fr; }
   .admin-notice-submit-row { align-items: stretch; flex-direction: column; }
-  .admin-notice-submit-row .admin-primary-button { width: 100%; }
+  .admin-notice-editor-actions { width: 100%; }
+  .admin-notice-editor-actions button { flex: 1; }
 }
