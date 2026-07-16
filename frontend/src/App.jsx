@@ -148,6 +148,8 @@ function MainApp() {
   const [userProfile, setUserProfile] = useState(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [loginNotice, setLoginNotice] = useState(null);
+  const loginNoticeAccessTokenRef = useRef(null);
+  loginNoticeAccessTokenRef.current = userSession?.access_token || null;
 
   const requireLogin = () => {
     if (!userSession) {
@@ -411,7 +413,9 @@ function MainApp() {
   }, []);
 
   useEffect(() => {
-    if (!userSession?.access_token || !userSession?.user?.id) {
+    const accessToken = loginNoticeAccessTokenRef.current;
+    const userId = userSession?.user?.id;
+    if (!accessToken || !userId) {
       setLoginNotice(null);
       return undefined;
     }
@@ -420,12 +424,12 @@ function MainApp() {
     const fetchLoginNotice = async () => {
       try {
         const response = await apiFetch(`${API_BASE_URL}/api/notices/current`, {
-          headers: { Authorization: `Bearer ${userSession.access_token}` }
+          headers: { Authorization: `Bearer ${accessToken}` }
         });
         if (!response.ok) return;
         const notice = await response.json();
         if (!active || !notice?.id) return;
-        const seenKey = `${LOGIN_NOTICE_SEEN_PREFIX}${userSession.user.id}_${notice.id}`;
+        const seenKey = `${LOGIN_NOTICE_SEEN_PREFIX}${userId}_${notice.id}`;
         if (sessionStorage.getItem(seenKey) !== '1') setLoginNotice(notice);
       } catch (error) {
         if (import.meta.env.DEV) console.debug('Login notice fetch skipped:', error);
@@ -434,7 +438,7 @@ function MainApp() {
 
     fetchLoginNotice();
     return () => { active = false; };
-  }, [userSession?.access_token, userSession?.user?.id]);
+  }, [userSession?.user?.id]);
 
   const closeLoginNotice = () => {
     if (loginNotice?.id && userSession?.user?.id) {
