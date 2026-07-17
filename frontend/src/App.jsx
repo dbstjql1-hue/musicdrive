@@ -588,11 +588,27 @@ function MainApp() {
   // Fullscreen lyrics auto scroll effect
   useEffect(() => {
     if (isFullscreenPlayerOpen && fullscreenTab === 'lyrics' && mobileLyricsListRef.current) {
-      const activeEl = mobileLyricsListRef.current.querySelector('.active');
-      if (activeEl) {
-        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      const lyricsList = mobileLyricsListRef.current;
+      const activeEl = lyricsList.querySelector('.fs-lyric-line.active');
+
+      if (!activeEl) return undefined;
+
+      const animationFrame = window.requestAnimationFrame(() => {
+        const targetTop = activeEl.offsetTop
+          - (lyricsList.clientHeight / 2)
+          + (activeEl.offsetHeight / 2);
+        const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+        lyricsList.scrollTo({
+          top: Math.max(0, targetTop),
+          behavior: prefersReducedMotion ? 'auto' : 'smooth'
+        });
+      });
+
+      return () => window.cancelAnimationFrame(animationFrame);
     }
+
+    return undefined;
   }, [currentLyricIndex, isFullscreenPlayerOpen, fullscreenTab]);
 
   const startSyncEditing = () => {
@@ -4296,12 +4312,12 @@ function MainApp() {
                   {/* 지니 스타일 2줄 실시간 가사 */}
                   <div className="fs-lyrics-preview">
                     {parsedLyrics[currentLyricIndex] ? (
-                      <>
+                      <div className="fs-lyrics-preview-lines" key={currentLyricIndex}>
                         <p className="fs-lyrics-active">{parsedLyrics[currentLyricIndex].text}</p>
                         <p className="fs-lyrics-next">
                           {parsedLyrics[currentLyricIndex + 1] ? parsedLyrics[currentLyricIndex + 1].text : ''}
                         </p>
-                      </>
+                      </div>
                     ) : (
                       <p className="fs-lyrics-placeholder">가사 데이터가 없습니다.</p>
                     )}
@@ -4331,7 +4347,14 @@ function MainApp() {
                       parsedLyrics.map((line, idx) => (
                         <div 
                           key={idx}
-                          className={`fs-lyric-line ${idx === currentLyricIndex ? 'active' : ''}`}
+                          className={`fs-lyric-line ${
+                            idx === currentLyricIndex
+                              ? 'active'
+                              : idx < currentLyricIndex
+                                ? 'past'
+                                : 'upcoming'
+                          }`}
+                          aria-current={idx === currentLyricIndex ? 'true' : undefined}
                           onClick={() => {
                             if (line.time !== null) {
                               audioRef.current.currentTime = line.time;
