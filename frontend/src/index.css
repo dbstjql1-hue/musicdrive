@@ -3565,6 +3565,15 @@ body {
   display: none;
 }
 
+.fs-lyrics-list::before,
+.fs-lyrics-list::after {
+  content: '';
+  display: block;
+  flex: 0 0 42%;
+  width: 100%;
+  pointer-events: none;
+}
+
 .fs-lyric-line {
   font-size: 15px;
   color: rgba(255, 255, 255, 0.55); /* 가독성을 위해 대비 향상 */
