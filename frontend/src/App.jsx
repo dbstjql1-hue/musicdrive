@@ -588,27 +588,16 @@ function MainApp() {
   // Fullscreen lyrics auto scroll effect
   useEffect(() => {
     if (isFullscreenPlayerOpen && fullscreenTab === 'lyrics' && mobileLyricsListRef.current) {
-      const lyricsList = mobileLyricsListRef.current;
-      const activeEl = lyricsList.querySelector('.fs-lyric-line.active');
-
-      if (!activeEl) return undefined;
-
-      const animationFrame = window.requestAnimationFrame(() => {
-        const targetTop = activeEl.offsetTop
-          - (lyricsList.clientHeight / 2)
-          + (activeEl.offsetHeight / 2);
+      const activeEl = mobileLyricsListRef.current.querySelector('.fs-lyric-line.active');
+      if (activeEl) {
         const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-
-        lyricsList.scrollTo({
-          top: Math.max(0, targetTop),
-          behavior: prefersReducedMotion ? 'auto' : 'smooth'
+        activeEl.scrollIntoView({
+          behavior: prefersReducedMotion ? 'auto' : 'smooth',
+          block: 'center',
+          inline: 'nearest'
         });
-      });
-
-      return () => window.cancelAnimationFrame(animationFrame);
+      }
     }
-
-    return undefined;
   }, [currentLyricIndex, isFullscreenPlayerOpen, fullscreenTab]);
 
   const startSyncEditing = () => {
