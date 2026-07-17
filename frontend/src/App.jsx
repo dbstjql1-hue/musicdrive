@@ -2129,7 +2129,11 @@ function MainApp() {
       });
       const data = await res.json();
       if (res.ok) {
-        if (data.autoSync?.state === 'configuration_required') {
+        if (data.lyricsAutoSync?.state === 'queued') {
+          showToast('음원이 등록되었습니다. 가사는 분석이 끝나면 자동으로 싱크됩니다.');
+        } else if (data.lyricsAutoSync?.state === 'configuration_required') {
+          showToast('음원은 등록되었지만 가사 자동 싱크 서버 설정을 확인해 주세요.');
+        } else if (data.autoSync?.state === 'configuration_required') {
           showToast('음원은 등록되었지만 자동 동기화 서버 설정이 필요합니다.');
         } else if (data.autoSync?.state === 'retrying') {
           showToast('음원이 등록되었습니다. 자동 동기화를 다시 시도합니다.');

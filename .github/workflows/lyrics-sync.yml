@@ -1,0 +1,84 @@
+name: Auto-sync uploaded lyrics
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'frontend/public/songs/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: lyrics-sync-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sync-lyrics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MUSICDRIVE_API_URL: https://port-0-musicdrive-mq6pow2r04649f47.sel3.cloudtype.app
+      WHISPER_MODEL: medium
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache Whisper model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: whisper-${{ runner.os }}-${{ env.WHISPER_MODEL }}-v1
+
+      - name: Install transcription runtime
+        run: pip install --disable-pip-version-check faster-whisper==1.2.1
+
+      - name: Generate lyric timing
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$BEFORE_SHA" =~ ^0+$ ]]; then
+            git ls-tree -r --name-only -z "$AFTER_SHA" -- frontend/public/songs
+          else
+            git diff --name-only --diff-filter=A -z "$BEFORE_SHA" "$AFTER_SHA" -- frontend/public/songs
+          fi | while IFS= read -r -d '' audio_path; do
+            case "${audio_path,,}" in
+              *.mp3|*.m4a|*.aac|*.ogg|*.flac|*.wav)
+                python scripts/auto_sync_lyrics.py \
+                  --audio-path "$audio_path" \
+                  --api-url "$MUSICDRIVE_API_URL" \
+                  --output-dir frontend/public/lyrics-sync-results \
+                  --model "$WHISPER_MODEL"
+                ;;
+            esac
+          done
+
+      - name: Commit generated results
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -d frontend/public/lyrics-sync-results ]]; then
+            echo "No lyric timing result was generated."
+            exit 0
+          fi
+          git add frontend/public/lyrics-sync-results
+          if git diff --cached --quiet; then
+            echo "No lyric timing result was generated."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "sync: generate automatic lyric timing"
+          git pull --rebase origin main
+          git push origin HEAD:main

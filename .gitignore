@@ -7,6 +7,8 @@ dist/
 build/
 .next/
 out/
+__pycache__/
+*.py[cod]
 
 # Logs
 npm-debug.log*
@@ -33,5 +35,4 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
-mcp_config.json  
- 
+mcp_config.json

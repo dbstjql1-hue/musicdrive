@@ -6,6 +6,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { createAssetSyncService } = require('./asset-sync');
+const { createLyricsSyncService, hasTimedLyrics } = require('./lyrics-sync');
 const { selectWeeklyMatch } = require('./weekly-match');
 const { buildUserDashboard } = require('./user-dashboard');
 const { validateNoticePayload } = require('./notice-validation');
@@ -161,6 +162,7 @@ const assetSync = createAssetSyncService({
   supabase,
   getStorageFileName
 });
+const lyricsSync = createLyricsSyncService({ supabase });
 
 async function recordActivity({ eventType, userId = null, sessionId = null, songId = null, metadata = {} }) {
   try {
@@ -494,7 +496,30 @@ app.post('/api/songs', upload, async (req, res) => {
       }
     }
 
-    res.status(201).json({ ...newSong, autoSync });
+    const sourceLyrics = String(newSong.lyrics || '').trim();
+    let lyricsAutoSync = {
+      state: 'not_requested',
+      message: 'No lyrics were provided for automatic timing.'
+    };
+    if (sourceLyrics && hasTimedLyrics(sourceLyrics)) {
+      lyricsAutoSync = {
+        state: 'already_synced',
+        message: 'The uploaded lyrics already contain timing.'
+      };
+    } else if (sourceLyrics) {
+      const lyricsSyncStatus = lyricsSync.getStatus();
+      lyricsAutoSync = {
+        state: syncStatus.publishingConfigured && lyricsSyncStatus.enabled
+          ? 'queued'
+          : 'configuration_required',
+        message: syncStatus.publishingConfigured && lyricsSyncStatus.enabled
+          ? 'Automatic lyric timing has been queued.'
+          : 'Automatic lyric timing requires the GitHub asset sync configuration.'
+      };
+      if (lyricsAutoSync.state === 'queued') lyricsSync.scheduleSoon(60_000);
+    }
+
+    res.status(201).json({ ...newSong, autoSync, lyricsAutoSync });
   } catch (err) {
     console.error('음원 등록 오류 상세:', err);
     res.status(500).json({ 
@@ -2525,4 +2550,11 @@ app.listen(PORT, () => {
       : '[asset-sync] 자동 게시 비활성화: GITHUB_ASSET_SYNC_TOKEN 환경변수를 확인해 주세요.'
   );
   assetSync.start();
+  const lyricsSyncStatus = lyricsSync.getStatus();
+  console.log(
+    lyricsSyncStatus.enabled
+      ? `[lyrics-sync] Automatic lyric result checks enabled: ${lyricsSyncStatus.repository}@${lyricsSyncStatus.branch}`
+      : '[lyrics-sync] Automatic lyric result checks disabled.'
+  );
+  lyricsSync.start();
 });
