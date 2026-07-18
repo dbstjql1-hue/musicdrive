@@ -6,6 +6,9 @@ on:
       - main
     paths:
       - 'frontend/public/songs/**'
+      - 'scripts/auto_sync_lyrics.py'
+      - '.github/workflows/lyrics-sync.yml'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -43,26 +46,14 @@ jobs:
 
       - name: Generate lyric timing
         shell: bash
-        env:
-          BEFORE_SHA: ${{ github.event.before }}
-          AFTER_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [[ "$BEFORE_SHA" =~ ^0+$ ]]; then
-            git ls-tree -r --name-only -z "$AFTER_SHA" -- frontend/public/songs
-          else
-            git diff --name-only --diff-filter=A -z "$BEFORE_SHA" "$AFTER_SHA" -- frontend/public/songs
-          fi | while IFS= read -r -d '' audio_path; do
-            case "${audio_path,,}" in
-              *.mp3|*.m4a|*.aac|*.ogg|*.flac|*.wav)
-                python scripts/auto_sync_lyrics.py \
-                  --audio-path "$audio_path" \
-                  --api-url "$MUSICDRIVE_API_URL" \
-                  --output-dir frontend/public/lyrics-sync-results \
-                  --model "$WHISPER_MODEL"
-                ;;
-            esac
-          done
+          python scripts/auto_sync_lyrics.py \
+            --scan-pending \
+            --api-url "$MUSICDRIVE_API_URL" \
+            --audio-root frontend/public/songs \
+            --output-dir frontend/public/lyrics-sync-results \
+            --model "$WHISPER_MODEL"
 
       - name: Commit generated results
         shell: bash

@@ -3504,6 +3504,26 @@ body {
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
 }
 
+.fs-open-lyrics-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  margin-top: 14px;
+  padding: 0 18px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(8, 8, 14, 0.48);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  font-weight: 750;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
 /* 전체 가사 뷰 */
 .fs-lyrics-view {
   width: 100%;
@@ -4519,6 +4539,14 @@ body {
 
   .lyrics-drawer {
     display: none;
+  }
+
+  .fs-open-lyrics-btn {
+    display: inline-flex;
+  }
+
+  .fs-cover-wrap {
+    margin-bottom: 26px;
   }
 
   .bottom-player {

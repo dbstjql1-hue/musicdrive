@@ -1,6 +1,16 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
-from auto_sync_lyrics import TimedWord, calculate_line_times, has_timing, lrc_timestamp
+from auto_sync_lyrics import (
+    TimedWord,
+    calculate_line_times,
+    find_pending_songs,
+    has_timing,
+    lrc_timestamp,
+    normalize_source_lyrics,
+)
 
 
 class AutoSyncLyricsTests(unittest.TestCase):
@@ -37,6 +47,37 @@ class AutoSyncLyricsTests(unittest.TestCase):
         self.assertEqual(lrc_timestamp(61.236), "[01:01.24]")
         self.assertTrue(has_timing("[00:03.20]가사"))
         self.assertFalse(has_timing("시간 없는 가사"))
+
+    def test_pending_scan_backfills_only_missing_results(self):
+        songs = [
+            {"id": "pending", "audio_url": "/songs/pending.mp3", "lyrics": "첫 줄\n둘째 줄"},
+            {"id": "timed", "audio_url": "/songs/timed.mp3", "lyrics": "[00:01.00]완료"},
+            {"id": "done", "audio_url": "/songs/done.mp3", "lyrics": "이미 분석한 가사"},
+        ]
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir)
+            audio_root = root / "songs"
+            output_dir = root / "results"
+            audio_root.mkdir()
+            output_dir.mkdir()
+            for name in ("pending.mp3", "timed.mp3", "done.mp3"):
+                (audio_root / name).write_bytes(b"audio")
+
+            source = normalize_source_lyrics(songs[2]["lyrics"])
+            import hashlib
+
+            (output_dir / "done.json").write_text(
+                json.dumps({
+                    "state": "completed",
+                    "songId": "done",
+                    "sourceLyricsHash": hashlib.sha256(source.encode("utf-8")).hexdigest(),
+                }),
+                encoding="utf-8",
+            )
+
+            pending = find_pending_songs(songs, audio_root, output_dir)
+
+        self.assertEqual([(song["id"], path.name) for song, path in pending], [("pending", "pending.mp3")])
 
 
 if __name__ == "__main__":

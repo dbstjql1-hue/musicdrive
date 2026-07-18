@@ -201,11 +201,61 @@ def find_song(songs: list[dict], audio_path: Path) -> dict | None:
     return next((song for song in songs if audio_basename(song.get("audio_url")) == target_name), None)
 
 
-def transcribe(audio_path: Path, model_name: str, language: str, prompt: str) -> tuple[list[TimedWord], float]:
+def result_matches_source(result_path: Path, song: dict) -> bool:
+    if not result_path.is_file():
+        return False
+    try:
+        result = json.loads(result_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+
+    source_lyrics = normalize_source_lyrics(song.get("lyrics"))
+    return bool(
+        result.get("state") == "completed"
+        and result.get("songId") == song.get("id")
+        and result.get("sourceLyricsHash")
+        == hashlib.sha256(source_lyrics.encode("utf-8")).hexdigest()
+    )
+
+
+def find_pending_songs(
+    songs: list[dict], audio_root: Path, output_dir: Path
+) -> list[tuple[dict, Path]]:
+    pending: list[tuple[dict, Path]] = []
+    for song in songs:
+        source_lyrics = normalize_source_lyrics(song.get("lyrics"))
+        if not source_lyrics or has_timing(source_lyrics):
+            continue
+
+        file_name = audio_basename(song.get("audio_url"))
+        if not file_name:
+            continue
+        audio_path = audio_root / file_name
+        if not audio_path.is_file():
+            continue
+
+        result_path = output_dir / f"{song.get('id')}.json"
+        if result_matches_source(result_path, song):
+            continue
+        pending.append((song, audio_path))
+    return pending
+
+
+def create_whisper_model(model_name: str):
     from faster_whisper import WhisperModel
 
-    model = WhisperModel(model_name, device="cpu", compute_type="int8")
-    segments, info = model.transcribe(
+    return WhisperModel(model_name, device="cpu", compute_type="int8")
+
+
+def transcribe(
+    audio_path: Path,
+    model_name: str,
+    language: str,
+    prompt: str,
+    model=None,
+) -> tuple[list[TimedWord], float]:
+    active_model = model or create_whisper_model(model_name)
+    segments, info = active_model.transcribe(
         str(audio_path),
         language=language,
         beam_size=5,
@@ -239,34 +289,36 @@ def write_result(output_dir: Path, result: dict) -> Path:
     return output_path
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--audio-path", required=True, type=Path)
-    parser.add_argument("--api-url", required=True)
-    parser.add_argument("--output-dir", type=Path, default=Path("frontend/public/lyrics-sync-results"))
-    parser.add_argument("--model", default="medium")
-    parser.add_argument("--language", default="ko")
-    args = parser.parse_args()
-
-    songs = fetch_songs(args.api_url)
-    song = find_song(songs, args.audio_path)
-    if not song:
-        raise SystemExit(f"No API song matches audio file {args.audio_path.name}")
-
+def generate_result(
+    song: dict,
+    audio_path: Path,
+    output_dir: Path,
+    model_name: str,
+    language: str,
+    model=None,
+) -> Path | None:
     source_lyrics = normalize_source_lyrics(song.get("lyrics"))
     lines = plain_lyric_lines(source_lyrics)
     if not lines:
-        print(f"Skipping {song.get('title', args.audio_path.name)}: no lyrics")
-        return 0
+        print(f"Skipping {song.get('title', audio_path.name)}: no lyrics")
+        return None
     if has_timing(source_lyrics):
-        print(f"Skipping {song.get('title', args.audio_path.name)}: lyrics already have timing")
-        return 0
+        print(f"Skipping {song.get('title', audio_path.name)}: lyrics already have timing")
+        return None
 
-    print(f"Transcribing {song.get('title', args.audio_path.name)} with Whisper {args.model}...")
-    words, duration = transcribe(args.audio_path, args.model, args.language, source_lyrics)
+    print(f"Transcribing {song.get('title', audio_path.name)} with Whisper {model_name}...")
+    words, duration = transcribe(
+        audio_path,
+        model_name,
+        language,
+        source_lyrics,
+        model=model,
+    )
     line_times, confidence = calculate_line_times(lines, words, duration)
     if not math.isfinite(confidence) or confidence < 0.6:
-        raise SystemExit(f"Alignment confidence {confidence:.3f} is below the safe threshold (0.600)")
+        raise RuntimeError(
+            f"Alignment confidence {confidence:.3f} is below the safe threshold (0.600)"
+        )
 
     lrc = "\n".join(f"{lrc_timestamp(start)}{line}" for start, line in zip(line_times, lines))
     result = {
@@ -276,12 +328,61 @@ def main() -> int:
         "sourceLyricsHash": hashlib.sha256(source_lyrics.encode("utf-8")).hexdigest(),
         "lineCount": len(lines),
         "confidence": round(confidence, 4),
-        "model": args.model,
+        "model": model_name,
         "generatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "lrc": lrc,
     }
-    output_path = write_result(args.output_dir, result)
+    output_path = write_result(output_dir, result)
     print(f"Wrote {output_path} ({len(lines)} lines, confidence {confidence:.3f})")
+    return output_path
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    source_group = parser.add_mutually_exclusive_group(required=True)
+    source_group.add_argument("--audio-path", type=Path)
+    source_group.add_argument("--scan-pending", action="store_true")
+    parser.add_argument("--api-url", required=True)
+    parser.add_argument("--audio-root", type=Path, default=Path("frontend/public/songs"))
+    parser.add_argument("--output-dir", type=Path, default=Path("frontend/public/lyrics-sync-results"))
+    parser.add_argument("--model", default="medium")
+    parser.add_argument("--language", default="ko")
+    args = parser.parse_args()
+
+    songs = fetch_songs(args.api_url)
+    if args.scan_pending:
+        pending_songs = find_pending_songs(songs, args.audio_root, args.output_dir)
+        if not pending_songs:
+            print("No songs are waiting for automatic lyric timing.")
+            return 0
+
+        print(f"Found {len(pending_songs)} song(s) waiting for automatic lyric timing.")
+        model = create_whisper_model(args.model)
+        failures: list[str] = []
+        for song, audio_path in pending_songs:
+            try:
+                generate_result(
+                    song,
+                    audio_path,
+                    args.output_dir,
+                    args.model,
+                    args.language,
+                    model=model,
+                )
+            except Exception as error:  # keep other pending songs moving
+                title = song.get("title", audio_path.name)
+                failures.append(f"{title}: {error}")
+                print(f"Failed {title}: {error}")
+
+        if failures:
+            raise SystemExit("Automatic lyric timing failed for: " + "; ".join(failures))
+        return 0
+
+    assert args.audio_path is not None
+    song = find_song(songs, args.audio_path)
+    if not song:
+        raise SystemExit(f"No API song matches audio file {args.audio_path.name}")
+    generate_result(song, args.audio_path, args.output_dir, args.model, args.language)
     return 0
 
 

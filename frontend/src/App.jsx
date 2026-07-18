@@ -161,6 +161,12 @@ function formatWeeklyMatchPeriod(startAt, endAt) {
   return `${formatter.format(start)} – ${formatter.format(end)}`;
 }
 
+function hasTimedLyrics(value) {
+  return String(value || '')
+    .split(/\r?\n/)
+    .some(line => /^\[\d{1,2}:\d{2}(?:\.\d{2,3})?\]/.test(line.trim()));
+}
+
 function MainApp() {
   const [userSession, setUserSession] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
@@ -584,6 +590,42 @@ function MainApp() {
       absIdx: startIdx + idx
     }));
   }, [parsedLyrics, currentLyricIndex]);
+
+  // Keep the player current when background lyric analysis finishes.
+  useEffect(() => {
+    const songId = activeSong?.id;
+    const sourceLyrics = activeSong?.lyrics;
+    if (!songId || !sourceLyrics || hasTimedLyrics(sourceLyrics)) return undefined;
+
+    let cancelled = false;
+    const refreshTimedLyrics = async () => {
+      try {
+        const response = await apiFetch(`${API_BASE_URL}/api/songs/${songId}`, {}, { timeoutMs: 5_000 });
+        if (!response.ok) return;
+        const latestSong = await response.json();
+        if (cancelled || !hasTimedLyrics(latestSong?.lyrics)) return;
+
+        setActiveSong(current => current?.id === songId
+          ? { ...current, lyrics: latestSong.lyrics }
+          : current);
+        setSongs(current => current.map(song => song.id === songId
+          ? { ...song, lyrics: latestSong.lyrics }
+          : song));
+        showToast('가사 자동 싱크가 완료되어 재생 화면에 반영했습니다.');
+      } catch (error) {
+        if (!isApiUnavailableError(error)) {
+          console.debug('Timed lyrics refresh skipped.', error);
+        }
+      }
+    };
+
+    const intervalId = window.setInterval(refreshTimedLyrics, 30_000);
+    refreshTimedLyrics();
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [activeSong?.id, activeSong?.lyrics]);
 
   // Fullscreen lyrics auto scroll effect
   useEffect(() => {
@@ -4315,6 +4357,20 @@ function MainApp() {
                       <p className="fs-lyrics-placeholder">가사 데이터가 없습니다.</p>
                     )}
                   </div>
+                  {activeSong.lyrics && (
+                    <button
+                      type="button"
+                      className="fs-open-lyrics-btn"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setFullscreenTab('lyrics');
+                      }}
+                      aria-label="전체 가사 보기"
+                    >
+                      <BookOpen size={17} />
+                      전체 가사 보기
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="fs-lyrics-view">
