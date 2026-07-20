@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { GripHorizontal, LogIn, LogOut, Maximize2, MessageCircle, Monitor, Send, ShieldCheck, SlidersHorizontal, Smile, Smartphone, Users, X } from 'lucide-react';
+import { AtSign, Check, GripHorizontal, LoaderCircle, LogIn, LogOut, Maximize2, MessageCircle, Monitor, Pencil, Send, ShieldCheck, SlidersHorizontal, Smile, Smartphone, Users, X } from 'lucide-react';
 import { apiFetch } from '../apiClient';
 import { supabase } from '../supabaseClient';
 
@@ -90,15 +90,13 @@ function appendUniqueMessage(messages, nextMessage) {
   return [...messages, nextMessage].slice(-100);
 }
 
-function getPresenceDisplayName(session) {
-  const metadataName = session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name;
-  const emailName = String(session?.user?.email || '').split('@')[0];
-  return String(metadataName || emailName || '음악친구')
-    .normalize('NFKC')
-    .replace(/[^\p{L}\p{N}._ -]/gu, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 20) || '음악친구';
+function getPrivateFallbackNickname(userId) {
+  const suffix = String(userId || '').replace(/[^a-f0-9]/gi, '').slice(0, 8).toLowerCase() || 'listener';
+  return `음악친구_${suffix}`;
+}
+
+function normalizeMentionKey(value) {
+  return String(value || '').normalize('NFKC').toLocaleLowerCase('ko-KR');
 }
 
 function getCurrentDeviceType() {
@@ -128,9 +126,25 @@ function getSavedOpacity() {
   return Number.isFinite(saved) ? Math.min(100, Math.max(15, saved)) : (isMobile ? 40 : 18);
 }
 
-export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) {
-  const presenceDisplayName = getPresenceDisplayName(session);
+export function LiveChatPanel({
+  id,
+  isOpen,
+  onClose,
+  session,
+  onLoginRequest,
+  onPresenceChange,
+  onActivity,
+  onMention,
+  onNicknameChange,
+  activityActive = false,
+  mentionActive = false,
+}) {
+  const fallbackNickname = getPrivateFallbackNickname(session?.user?.id);
   const currentDeviceType = getCurrentDeviceType();
+  const [chatNickname, setChatNickname] = useState(fallbackNickname);
+  const [nicknameDraft, setNicknameDraft] = useState(fallbackNickname);
+  const [isNicknameEditing, setIsNicknameEditing] = useState(false);
+  const [isNicknameSaving, setIsNicknameSaving] = useState(false);
   const [messages, setMessages] = useState([]);
   const [onlineCount, setOnlineCount] = useState(0);
   const [onlineUsers, setOnlineUsers] = useState([]);
@@ -156,8 +170,37 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
   const emojiPickerRef = useRef(null);
   const participantsButtonRef = useRef(null);
   const participantsPopoverRef = useRef(null);
+  const callbackRef = useRef({ onPresenceChange, onActivity, onMention });
   const activeEmojiCategory = EMOJI_CATEGORIES.find((category) => category.id === emojiCategory)
     || EMOJI_CATEGORIES[0];
+
+  useEffect(() => {
+    callbackRef.current = { onPresenceChange, onActivity, onMention };
+  }, [onActivity, onMention, onPresenceChange]);
+
+  useEffect(() => {
+    if (!session?.access_token) return undefined;
+
+    let active = true;
+    const fetchChatProfile = async () => {
+      try {
+        const response = await apiFetch('/api/chat/profile', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || '채팅 닉네임을 불러오지 못했습니다.');
+        if (!active) return;
+        setChatNickname(data.nickname || fallbackNickname);
+        setNicknameDraft(data.nickname || fallbackNickname);
+        onNicknameChange?.(data.nickname || fallbackNickname);
+      } catch (error) {
+        if (active) setSystemNotice(error.message || '채팅 닉네임을 불러오지 못했습니다.');
+      }
+    };
+
+    fetchChatProfile();
+    return () => { active = false; };
+  }, [fallbackNickname, onNicknameChange, session?.access_token]);
 
   useEffect(() => {
     if (!session?.user?.id) return undefined;
@@ -197,6 +240,7 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
                 || first.nickname.localeCompare(second.nickname, 'ko'));
             setOnlineUsers(connectedUsers);
             setOnlineCount(connectedUsers.length);
+            callbackRef.current.onPresenceChange?.(connectedUsers.length);
             hasSyncedPresence = true;
           })
           .on('presence', { event: 'join' }, ({ key, currentPresences, newPresences }) => {
@@ -212,6 +256,11 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
           .on('broadcast', { event: 'chat_message' }, ({ payload: nextMessage }) => {
             if (!active) return;
             setMessages((current) => appendUniqueMessage(current, nextMessage));
+            if (nextMessage?.user_id === session.user.id) return;
+            const isMentioned = Array.isArray(nextMessage?.mentions)
+              && nextMessage.mentions.includes(normalizeMentionKey(chatNickname));
+            callbackRef.current.onActivity?.(nextMessage);
+            if (isMentioned) callbackRef.current.onMention?.(nextMessage);
           })
           .subscribe(async (status) => {
             if (!active || !channel) return;
@@ -219,7 +268,7 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
               setConnectionState('connected');
               await channel.track({
                 online_at: new Date().toISOString(),
-                nickname: presenceDisplayName,
+                nickname: chatNickname,
                 device_type: currentDeviceType,
               });
             } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
@@ -243,8 +292,9 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
         channel.untrack();
         supabase.removeChannel(channel);
       }
+      callbackRef.current.onPresenceChange?.(0);
     };
-  }, [currentDeviceType, presenceDisplayName, session?.access_token, session?.user?.id]);
+  }, [chatNickname, currentDeviceType, session?.access_token, session?.user?.id]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -395,6 +445,45 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
     });
   };
 
+  const handleMentionUser = (nickname) => {
+    const mention = `@${nickname}`;
+    setDraft((current) => {
+      const separator = current && !current.endsWith(' ') ? ' ' : '';
+      return `${current}${separator}${mention} `.slice(0, 200);
+    });
+    setIsParticipantsOpen(false);
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  const handleNicknameSave = async (event) => {
+    event.preventDefault();
+    if (!session?.access_token || isNicknameSaving) return;
+
+    setIsNicknameSaving(true);
+    setSystemNotice('');
+    try {
+      const response = await apiFetch('/api/chat/profile', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ nickname: nicknameDraft }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || '닉네임을 변경하지 못했습니다.');
+      setChatNickname(data.nickname);
+      setNicknameDraft(data.nickname);
+      setIsNicknameEditing(false);
+      onNicknameChange?.(data.nickname);
+      setSystemNotice(`채팅 닉네임이 @${data.nickname}(으)로 변경되었습니다.`);
+    } catch (error) {
+      setSystemNotice(error.message || '닉네임을 변경하지 못했습니다.');
+    } finally {
+      setIsNicknameSaving(false);
+    }
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!session?.access_token) {
@@ -419,6 +508,7 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || '메시지를 전송하지 못했습니다.');
       setMessages((current) => appendUniqueMessage(current, data));
+      callbackRef.current.onActivity?.(data);
       setDraft('');
       setIsEmojiOpen(false);
     } catch (error) {
@@ -434,7 +524,7 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
     <section
       id={id}
       ref={panelRef}
-      className={`live-chat-panel ${isDragging ? 'is-dragging' : ''} ${isResizing ? 'is-resizing' : ''}`}
+      className={`live-chat-panel ${isDragging ? 'is-dragging' : ''} ${isResizing ? 'is-resizing' : ''} ${onlineCount > 0 ? 'has-presence' : ''} ${activityActive ? 'has-activity' : ''} ${mentionActive ? 'has-mention' : ''}`}
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
@@ -526,7 +616,14 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
                 const isMobileDevice = user.device_type === 'mobile';
                 const DeviceIcon = isMobileDevice ? Smartphone : Monitor;
                 return (
-                  <div className="live-chat-participant" key={user.id}>
+                  <button
+                    type="button"
+                    className="live-chat-participant"
+                    key={user.id}
+                    onClick={() => !user.is_me && handleMentionUser(user.nickname)}
+                    disabled={user.is_me}
+                    title={user.is_me ? '내 닉네임' : `@${user.nickname}님 호출하기`}
+                  >
                     <span className="live-chat-participant-avatar">
                       {String(user.nickname || '음').slice(0, 1)}
                     </span>
@@ -537,8 +634,10 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
                       </strong>
                       <span><DeviceIcon size={10} /> {isMobileDevice ? '모바일' : 'PC'}</span>
                     </div>
-                    <i className="live-chat-participant-dot" title="접속 중" />
-                  </div>
+                    {user.is_me
+                      ? <i className="live-chat-participant-dot" title="접속 중" />
+                      : <AtSign className="live-chat-participant-mention" size={14} aria-hidden="true" />}
+                  </button>
                 );
               }) : (
                 <div className="live-chat-participants-empty">접속 정보를 불러오는 중입니다.</div>
@@ -576,6 +675,45 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
         </div>
       </div>
 
+      {session && (
+        <div className="live-chat-identity">
+          {isNicknameEditing ? (
+            <form onSubmit={handleNicknameSave}>
+              <AtSign size={14} aria-hidden="true" />
+              <input
+                value={nicknameDraft}
+                onChange={(event) => setNicknameDraft(event.target.value.slice(0, 16))}
+                minLength={2}
+                maxLength={16}
+                pattern="[가-힣A-Za-z0-9_]{2,16}"
+                placeholder="채팅 닉네임"
+                aria-label="채팅 닉네임"
+                autoFocus
+                required
+              />
+              <button type="submit" disabled={isNicknameSaving} aria-label="닉네임 저장">
+                {isNicknameSaving ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setNicknameDraft(chatNickname);
+                  setIsNicknameEditing(false);
+                }}
+                aria-label="닉네임 변경 취소"
+              >
+                <X size={14} />
+              </button>
+            </form>
+          ) : (
+            <>
+              <span><AtSign size={14} aria-hidden="true" /><small>채팅 닉네임</small><strong>{chatNickname}</strong></span>
+              <button type="button" onClick={() => setIsNicknameEditing(true)}><Pencil size={12} /> 변경</button>
+            </>
+          )}
+        </div>
+      )}
+
       {session ? (
         <>
           <div className="live-chat-messages" aria-live="polite">
@@ -601,8 +739,10 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
               const isMine = message.user_id === session.user.id;
               const isMobileDevice = message.device_type === 'mobile';
               const DeviceIcon = isMobileDevice ? Smartphone : Monitor;
+              const mentionsMe = !isMine && Array.isArray(message.mentions)
+                && message.mentions.includes(normalizeMentionKey(chatNickname));
               return (
-                <article className={`live-chat-message ${isMine ? 'mine' : ''}`} key={message.id}>
+                <article className={`live-chat-message ${isMine ? 'mine' : ''} ${mentionsMe ? 'mentions-me' : ''}`} key={message.id}>
                   <div className="live-chat-avatar">{String(message.nickname || '음').slice(0, 1)}</div>
                   <div className="live-chat-message-body">
                     <div className="live-chat-message-meta">
@@ -683,7 +823,7 @@ export function LiveChatPanel({ id, isOpen, onClose, session, onLoginRequest }) 
                 ref={inputRef}
                 value={draft}
                 onChange={(event) => setDraft(event.target.value.slice(0, 200))}
-                placeholder="메시지를 입력하세요"
+                placeholder="메시지 입력 · @닉네임으로 호출"
                 maxLength={200}
                 aria-label="실시간 대화 메시지"
               />

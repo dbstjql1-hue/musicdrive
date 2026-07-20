@@ -2,10 +2,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   MAX_CHAT_LENGTH,
+  createFallbackChatNickname,
   detectChatDeviceType,
+  extractChatMentionKeys,
   moderateChatMessage,
   moderateChatNickname,
   normalizeForMatching,
+  validateChatNickname,
 } = require('./chat-moderation');
 
 test('allows normal music conversation', () => {
@@ -49,4 +52,16 @@ test('detects mobile and PC chat clients from the request user agent', () => {
   assert.equal(detectChatDeviceType('Mozilla/5.0 (Linux; Android 15; SM-S938N) Mobile'), 'mobile');
   assert.equal(detectChatDeviceType('Mozilla/5.0 (Windows NT 10.0; Win64; x64)'), 'pc');
   assert.equal(detectChatDeviceType('Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6)'), 'pc');
+});
+
+test('validates public nicknames without exposing identity data', () => {
+  assert.equal(validateChatNickname('별빛DJ').nickname, '별빛DJ');
+  assert.equal(validateChatNickname('music_fan7').allowed, true);
+  assert.equal(validateChatNickname('음악 친구').code, 'invalid_nickname');
+  assert.equal(validateChatNickname('관리자').code, 'reserved_nickname');
+  assert.match(createFallbackChatNickname('12345678-abcd-ef00-1234-567890abcdef'), /^음악친구_[a-f0-9]{8}$/u);
+});
+
+test('extracts normalized unique nickname mentions', () => {
+  assert.deepEqual(extractChatMentionKeys('@별빛DJ 안녕하세요 @music_Fan7 @별빛DJ'), ['별빛dj', 'music_fan7']);
 });

@@ -241,7 +241,7 @@ function DashboardPanel({ stats, onSelectUser }) {
             <tbody>
               {(stats.userInsights || []).map(user => (
                 <tr key={user.id}>
-                  <td><button type="button" className="admin-user-link" onClick={() => onSelectUser(user)}><strong>{user.email || '이메일 없음'}</strong><small>{user.role === 'admin' ? '관리자' : '일반 회원'} · 상세 보기</small></button></td>
+                  <td><button type="button" className="admin-user-link" onClick={() => onSelectUser(user)}><strong>{user.google_name || user.email || '이름 없음'}</strong><small>{user.email || '이메일 없음'} · @{user.chat_nickname || '닉네임 없음'}</small></button></td>
                   <td>{user.favoriteSong ? <><strong>{user.favoriteSong.title}</strong><small>{user.favoriteSong.artist} · {formatNumber(user.favoriteSongPlays)}회</small></> : '-'}</td>
                   <td><span className="admin-chip">{user.favoriteCategory || '-'}</span></td>
                   <td>{formatNumber(user.plays)}</td>
@@ -567,7 +567,7 @@ function MembersPanel({ members, stats, onToggleRole, onSelectUser }) {
         <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>회원</th><th>권한</th><th>가입일</th><th>재생</th><th>선호 장르</th><th>최근 활동</th><th>관리</th></tr></thead><tbody>
           {members.map(member => {
             const insight = insightById[member.id];
-            return <tr key={member.id}><td><button type="button" className="admin-user-link" onClick={() => onSelectUser(member)}><strong>{member.email}</strong><small>{member.id.slice(0, 8)} · 상세 보기</small></button></td><td><span className={`admin-role admin-role-${member.role}`}>{member.role === 'admin' ? '관리자' : '일반 회원'}</span></td><td>{formatDate(member.created_at)}</td><td>{formatNumber(insight?.plays)}</td><td>{insight?.favoriteCategory || '-'}</td><td>{formatDate(insight?.lastSeen, true)}</td><td><button type="button" className="admin-table-button" onClick={() => onToggleRole(member.id, member.role)}><UserCog size={15} />{member.role === 'admin' ? '일반 전환' : '관리자 지정'}</button></td></tr>;
+            return <tr key={member.id}><td><button type="button" className="admin-user-link" onClick={() => onSelectUser(member)}><strong>{member.google_name || member.email}</strong><small>{member.email} · @{member.chat_nickname || '닉네임 없음'}</small></button></td><td><span className={`admin-role admin-role-${member.role}`}>{member.role === 'admin' ? '관리자' : '일반 회원'}</span></td><td>{formatDate(member.created_at)}</td><td>{formatNumber(insight?.plays)}</td><td>{insight?.favoriteCategory || '-'}</td><td>{formatDate(insight?.lastSeen, true)}</td><td><button type="button" className="admin-table-button" onClick={() => onToggleRole(member.id, member.role)}><UserCog size={15} />{member.role === 'admin' ? '일반 전환' : '관리자 지정'}</button></td></tr>;
           })}
           {members.length === 0 && <tr><td colSpan="7"><EmptyState label="회원 정보가 없습니다." /></td></tr>}
         </tbody></table></div>
@@ -626,8 +626,8 @@ function UserInsightDrawer({ user, data, isLoading, onClose }) {
   if (!user) return null;
   return (
     <div className="admin-drawer-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-      <aside className="admin-user-drawer" role="dialog" aria-modal="true" aria-label={`${user.email} 사용자 분석`}>
-        <header><div><span className="admin-eyebrow">Listener profile</span><h2>{user.email}</h2><p>개별 청취 이력과 선호 패턴</p></div><button type="button" className="admin-icon-button" onClick={onClose} title="닫기"><X size={18} /></button></header>
+      <aside className="admin-user-drawer" role="dialog" aria-modal="true" aria-label={`${user.google_name || user.email} 사용자 분석`}>
+        <header><div><span className="admin-eyebrow">Listener profile</span><h2>{user.google_name || user.email}</h2><p>{user.email} · 채팅 @{user.chat_nickname || '닉네임 없음'}</p></div><button type="button" className="admin-icon-button" onClick={onClose} title="닫기"><X size={18} /></button></header>
         {isLoading || !data ? <LoadingState label="사용자 활동을 분석하는 중입니다." /> : <div className="admin-drawer-body">
           <section className="admin-drawer-summary">
             <div><span>재생</span><strong>{formatNumber(data.summary?.plays)}</strong></div>

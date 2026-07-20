@@ -11,10 +11,12 @@ const { selectWeeklyMatch } = require('./weekly-match');
 const { buildUserDashboard } = require('./user-dashboard');
 const { validateNoticePayload } = require('./notice-validation');
 const {
+  createFallbackChatNickname,
   detectChatDeviceType,
+  extractChatMentionKeys,
   moderateChatMessage,
-  moderateChatNickname,
-  normalizeForMatching
+  normalizeForMatching,
+  validateChatNickname
 } = require('./chat-moderation');
 require('dotenv').config();
 
@@ -115,11 +117,36 @@ async function canManageBoardRecord(ownerKey, user) {
   return !error && profile?.role === 'admin';
 }
 
-function getChatDisplayName(user) {
-  const metadataName = user?.user_metadata?.full_name || user?.user_metadata?.name;
-  const emailName = String(user?.email || '').split('@')[0];
-  const safeName = moderateChatNickname(metadataName || emailName);
-  return safeName || `사용자-${String(user?.id || '').slice(0, 5)}`;
+function getGoogleAccountName(user) {
+  const value = user?.user_metadata?.full_name || user?.user_metadata?.name;
+  return String(value || '').normalize('NFKC').trim().slice(0, 100) || null;
+}
+
+async function getOrCreateChatProfile(user) {
+  const { data: existingProfile, error: profileError } = await supabase
+    .from('profiles')
+    .select('id, chat_nickname')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (profileError) throw profileError;
+
+  const existingNickname = validateChatNickname(existingProfile?.chat_nickname);
+  if (existingNickname.allowed) return { nickname: existingNickname.nickname };
+
+  const fallbackNickname = createFallbackChatNickname(user.id);
+  const { data: savedProfile, error: saveError } = await supabase
+    .from('profiles')
+    .upsert({
+      id: user.id,
+      email: user.email,
+      google_name: getGoogleAccountName(user),
+      chat_nickname: fallbackNickname,
+      nickname_updated_at: new Date().toISOString()
+    }, { onConflict: 'id' })
+    .select('chat_nickname')
+    .single();
+  if (saveError) throw saveError;
+  return { nickname: savedProfile.chat_nickname };
 }
 
 function toDateKey(value) {
@@ -1386,6 +1413,59 @@ async function broadcastTransientChatMessage(message) {
   }
 }
 
+app.get('/api/chat/profile', async (req, res) => {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return res.status(401).json({ error: '로그인이 필요합니다.' });
+
+    const profile = await getOrCreateChatProfile(user);
+    res.set('Cache-Control', 'no-store');
+    return res.json(profile);
+  } catch (err) {
+    console.error('채팅 프로필 조회 오류:', err);
+    return res.status(500).json({ error: '채팅 닉네임을 불러올 수 없습니다.' });
+  }
+});
+
+app.patch('/api/chat/profile', async (req, res) => {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return res.status(401).json({ error: '로그인이 필요합니다.' });
+
+    const validation = validateChatNickname(req.body?.nickname);
+    if (!validation.allowed) {
+      return res.status(422).json({
+        error: validation.message,
+        blocked: true,
+        reason: validation.code
+      });
+    }
+
+    await getOrCreateChatProfile(user);
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({
+        chat_nickname: validation.nickname,
+        google_name: getGoogleAccountName(user),
+        nickname_updated_at: new Date().toISOString()
+      })
+      .eq('id', user.id)
+      .select('chat_nickname')
+      .single();
+
+    if (error?.code === '23505') {
+      return res.status(409).json({ error: '이미 사용 중인 닉네임입니다.' });
+    }
+    if (error) throw error;
+
+    return res.json({ nickname: data.chat_nickname });
+  } catch (err) {
+    console.error('채팅 닉네임 변경 오류:', err);
+    return res.status(500).json({ error: '채팅 닉네임을 변경할 수 없습니다.' });
+  }
+});
+
 app.post('/api/chat/messages', async (req, res) => {
   try {
     const user = await getAuthenticatedUser(req);
@@ -1422,12 +1502,14 @@ app.post('/api/chat/messages', async (req, res) => {
       });
     }
 
+    const chatProfile = await getOrCreateChatProfile(user);
     const message = {
       id: crypto.randomUUID(),
       user_id: user.id,
-      nickname: getChatDisplayName(user),
+      nickname: chatProfile.nickname,
       device_type: detectChatDeviceType(req.get('user-agent')),
       content: moderation.content,
+      mentions: extractChatMentionKeys(moderation.content),
       created_at: new Date(now).toISOString()
     };
     // Realtime REST Broadcast는 DB 행을 만들지 않고 현재 접속자에게만 전달됩니다.
@@ -1650,7 +1732,7 @@ app.get('/api/admin/stats', async (req, res) => {
     const [totalUsersCount, totalSongsCount, profiles, songs, songAssetRows, storageFiles, plays, activities, likes, votes] = await Promise.all([
       safeFetch('profile count', supabase.from('profiles').select('*', { count: 'exact', head: true }), 0),
       safeFetch('song count', supabase.from('songs').select('*', { count: 'exact', head: true }), 0),
-      safeFetch('profiles', supabase.from('profiles').select('id, email, role, created_at').limit(5000), []),
+      safeFetch('profiles', supabase.from('profiles').select('id, email, google_name, chat_nickname, role, created_at').limit(5000), []),
       safeFetch('songs', supabase.from('songs').select('id, title, artist, category, audio_url, play_count, likes_count').limit(5000), []),
       safeFetch('song asset metadata', supabase.from('songs').select('id, audio_size_bytes').limit(5000), []),
       safeFetch('storage files', supabase.storage.from('songs').list('', { limit: 1000, sortBy: { column: 'name', order: 'asc' } }), []),
@@ -1798,6 +1880,8 @@ app.get('/api/admin/stats', async (req, res) => {
       return {
         id: profile.id,
         email: profile.email,
+        google_name: profile.google_name,
+        chat_nickname: profile.chat_nickname,
         role: profile.role,
         createdAt: profile.created_at,
         plays: target.plays,
@@ -1946,7 +2030,7 @@ app.get('/api/admin/members', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, email, role, created_at')
+      .select('id, email, google_name, chat_nickname, role, created_at')
       .order('created_at', { ascending: false });
     if (error) throw error;
     res.json(data || []);
@@ -1969,7 +2053,7 @@ app.patch('/api/admin/members/:id/role', async (req, res) => {
       .from('profiles')
       .update({ role })
       .eq('id', req.params.id)
-      .select('id, email, role, created_at')
+      .select('id, email, google_name, chat_nickname, role, created_at')
       .single();
     if (error) throw error;
     res.json(data);
@@ -2136,7 +2220,7 @@ app.get('/api/admin/users/:id/insights', async (req, res) => {
   try {
     const userId = req.params.id;
     const [profile, allPlays, activities, likes, votes, songs] = await Promise.all([
-      safeFetch('user profile', supabase.from('profiles').select('id, email, role, created_at').eq('id', userId).maybeSingle(), null),
+      safeFetch('user profile', supabase.from('profiles').select('id, email, google_name, chat_nickname, role, created_at').eq('id', userId).maybeSingle(), null),
       fetchPlayHistoryRows(10000),
       safeFetch('user activities', supabase.from('user_activity').select('id, event_type, song_id, metadata, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(500), []),
       safeFetch('user likes', supabase.from('likes').select('id, song_id, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(1000), []),

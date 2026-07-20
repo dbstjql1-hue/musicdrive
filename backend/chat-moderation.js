@@ -34,6 +34,9 @@ const REPEATED_CHARACTER_PATTERN = /(.)\1{6,}/u;
 const REPEATED_PHRASE_PATTERN = /(.{2,12})\1{3,}/u;
 const CHAT_REACTION_RUN_PATTERN = /[ㅋㅎㅠㅜ]{2,}/gu;
 const MOBILE_USER_AGENT_PATTERN = /(?:android|iphone|ipad|ipod|mobile|windows phone|opera mini|webos)/iu;
+const CHAT_NICKNAME_PATTERN = /^[\p{L}\p{N}_]{2,16}$/u;
+const RESERVED_CHAT_NICKNAMES = new Set(['admin', 'administrator', 'musicdrive', '관리자', '운영자']);
+const CHAT_MENTION_PATTERN = /@([\p{L}\p{N}_]{2,16})/gu;
 
 function block(code, message) {
   return { allowed: false, code, message };
@@ -84,6 +87,36 @@ function moderateChatNickname(value) {
   return result.allowed ? nickname : null;
 }
 
+function normalizeChatNicknameKey(value) {
+  return String(value || '').normalize('NFKC').toLocaleLowerCase('ko-KR');
+}
+
+function validateChatNickname(value) {
+  const nickname = moderateChatNickname(value);
+  if (!nickname || !CHAT_NICKNAME_PATTERN.test(nickname)) {
+    return block('invalid_nickname', '닉네임은 한글·영문·숫자·밑줄만 사용해 2~16자로 입력해 주세요.');
+  }
+
+  if (RESERVED_CHAT_NICKNAMES.has(normalizeChatNicknameKey(nickname))) {
+    return block('reserved_nickname', '운영진으로 오해할 수 있는 닉네임은 사용할 수 없습니다.');
+  }
+
+  return { allowed: true, code: null, message: null, nickname };
+}
+
+function createFallbackChatNickname(userId) {
+  const suffix = String(userId || '').replace(/[^a-f0-9]/gi, '').slice(0, 8).toLowerCase() || 'listener';
+  return `음악친구_${suffix}`;
+}
+
+function extractChatMentionKeys(content) {
+  const keys = new Set();
+  for (const match of String(content || '').normalize('NFKC').matchAll(CHAT_MENTION_PATTERN)) {
+    keys.add(normalizeChatNicknameKey(match[1]));
+  }
+  return [...keys];
+}
+
 function detectChatDeviceType(userAgent) {
   return MOBILE_USER_AGENT_PATTERN.test(String(userAgent || '')) ? 'mobile' : 'pc';
 }
@@ -91,7 +124,11 @@ function detectChatDeviceType(userAgent) {
 module.exports = {
   MAX_CHAT_LENGTH,
   detectChatDeviceType,
+  createFallbackChatNickname,
+  extractChatMentionKeys,
   moderateChatMessage,
   moderateChatNickname,
+  normalizeChatNicknameKey,
   normalizeForMatching,
+  validateChatNickname,
 };

@@ -2,6 +2,9 @@
 CREATE TABLE IF NOT EXISTS public.profiles (
   id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   email text NOT NULL,
+  google_name text,
+  chat_nickname text NOT NULL,
+  nickname_updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()),
   role text NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
   PRIMARY KEY (id)
@@ -10,33 +13,31 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- Enable RLS
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+CREATE UNIQUE INDEX IF NOT EXISTS profiles_chat_nickname_lower_uidx
+  ON public.profiles (LOWER(chat_nickname));
+
 -- Create policies
 -- Everyone can read their own profile
 CREATE POLICY "Users can view own profile" ON public.profiles
-  FOR SELECT USING (auth.uid() = id);
+  FOR SELECT TO authenticated USING ((SELECT auth.uid()) = id);
 
--- Admins can view all profiles
-CREATE POLICY "Admins can view all profiles" ON public.profiles
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
-    )
-  );
-
--- Admins can update profiles (for role changes)
-CREATE POLICY "Admins can update profiles" ON public.profiles
-  FOR UPDATE USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
-    )
-  );
+-- Admin member management runs through the backend service role.
+REVOKE ALL ON TABLE public.profiles FROM anon, authenticated;
+GRANT SELECT ON TABLE public.profiles TO authenticated;
 
 -- 2. Create trigger to automatically insert into profiles on signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
-  INSERT INTO public.profiles (id, email, role)
-  VALUES (new.id, new.email, 'user');
+  INSERT INTO public.profiles (id, email, google_name, chat_nickname, role, nickname_updated_at)
+  VALUES (
+    new.id,
+    new.email,
+    NULLIF(LEFT(BTRIM(COALESCE(new.raw_user_meta_data ->> 'full_name', new.raw_user_meta_data ->> 'name', '')), 100), ''),
+    '음악친구_' || LEFT(REPLACE(new.id::text, '-', ''), 8),
+    'user',
+    timezone('utc'::text, now())
+  );
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

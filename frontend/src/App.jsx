@@ -255,6 +255,7 @@ function MainApp() {
   // Fullscreen Modal Player States
   const [isFullscreenPlayerOpen, setIsFullscreenPlayerOpen] = useState(false);
   const [fullscreenTab, setFullscreenTab] = useState('cover'); // 'cover' or 'lyrics'
+  const [isLyricsFollowing, setIsLyricsFollowing] = useState(true);
   const [isPlaylistDrawerOpen, setIsPlaylistDrawerOpen] = useState(false);
   const [isFullscreenClosing, setIsFullscreenClosing] = useState(false);
   
@@ -322,6 +323,29 @@ function MainApp() {
   const [isLiveChatOpen, setIsLiveChatOpen] = useState(
     () => !window.matchMedia('(max-width: 768px)').matches
   );
+  const [chatOnlineCount, setChatOnlineCount] = useState(0);
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const [chatActivityAt, setChatActivityAt] = useState(0);
+  const chatActivityActive = chatActivityAt > 0;
+  const [chatMentionPending, setChatMentionPending] = useState(false);
+
+  useEffect(() => {
+    if (!chatActivityAt) return undefined;
+    const timeoutId = window.setTimeout(() => setChatActivityAt(0), 3600);
+    return () => window.clearTimeout(timeoutId);
+  }, [chatActivityAt]);
+
+  useEffect(() => {
+    if (!isLiveChatOpen) return;
+    setChatUnreadCount(0);
+    setChatMentionPending(false);
+  }, [isLiveChatOpen]);
+
+  useEffect(() => {
+    if (!chatMentionPending || !isLiveChatOpen) return undefined;
+    const timeoutId = window.setTimeout(() => setChatMentionPending(false), 4800);
+    return () => window.clearTimeout(timeoutId);
+  }, [chatMentionPending, isLiveChatOpen]);
 
   // Supabase Auth (하이브리드 모드 - Auth 기능 복구)
 
@@ -627,20 +651,29 @@ function MainApp() {
     };
   }, [activeSong?.id, activeSong?.lyrics]);
 
-  // Fullscreen lyrics auto scroll effect
+  // Keep the active line visible without letting a smooth-scroll animation lag behind playback.
   useEffect(() => {
-    if (isFullscreenPlayerOpen && fullscreenTab === 'lyrics' && mobileLyricsListRef.current) {
-      const activeEl = mobileLyricsListRef.current.querySelector('.fs-lyric-line.active');
-      if (activeEl) {
-        const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-        activeEl.scrollIntoView({
-          behavior: prefersReducedMotion ? 'auto' : 'smooth',
-          block: 'center',
-          inline: 'nearest'
-        });
-      }
+    if (!isFullscreenPlayerOpen || fullscreenTab !== 'lyrics' || !isLyricsFollowing) return undefined;
+
+    const lyricsList = mobileLyricsListRef.current;
+    const activeEl = lyricsList?.querySelector('.fs-lyric-line.active');
+    if (!lyricsList || !activeEl) return undefined;
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const targetTop = activeEl.offsetTop
+        - (lyricsList.clientHeight / 2)
+        + (activeEl.offsetHeight / 2);
+      lyricsList.scrollTo({ top: Math.max(0, targetTop), behavior: 'auto' });
+    });
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [currentLyricIndex, isFullscreenPlayerOpen, fullscreenTab, isLyricsFollowing]);
+
+  useEffect(() => {
+    if (isFullscreenPlayerOpen && fullscreenTab === 'lyrics') {
+      setIsLyricsFollowing(true);
     }
-  }, [currentLyricIndex, isFullscreenPlayerOpen, fullscreenTab]);
+  }, [activeSong?.id, isFullscreenPlayerOpen, fullscreenTab]);
 
   const startSyncEditing = () => {
     if (!activeSong || !activeSong.lyrics) return;
@@ -872,6 +905,22 @@ function MainApp() {
       setToastMessage('');
     }, 3000);
   };
+
+  const handleLiveChatActivity = useCallback(() => {
+    setChatActivityAt(Date.now());
+    if (!isLiveChatOpen) setChatUnreadCount((current) => Math.min(99, current + 1));
+  }, [isLiveChatOpen]);
+
+  const handleLiveChatMention = useCallback((message) => {
+    setChatMentionPending(true);
+    const sender = message?.nickname || '접속자';
+    const preview = String(message?.content || '').replace(/\s+/g, ' ').slice(0, 46);
+    showToast(`${sender}님이 회원님을 불렀습니다${preview ? ` · ${preview}` : ''}`);
+  }, []);
+
+  const handleChatNicknameChange = useCallback((nickname) => {
+    setUserProfile((current) => current ? { ...current, chat_nickname: nickname } : current);
+  }, []);
 
   // 1. 초기 데이터 가져오기
   useEffect(() => {
@@ -2472,7 +2521,7 @@ function MainApp() {
           <li className="live-chat-nav-entry">
             <button
               type="button"
-              className={`live-chat-nav-button ${isLiveChatOpen ? 'active' : ''}`}
+              className={`live-chat-nav-button ${isLiveChatOpen ? 'active' : ''} ${chatOnlineCount > 0 ? 'has-presence' : ''} ${chatActivityActive ? 'has-activity' : ''} ${chatMentionPending ? 'has-mention' : ''}`}
               onClick={() => { setIsLiveChatOpen((open) => !open); closeMobileMenu(); }}
               aria-expanded={isLiveChatOpen}
               aria-controls="musicdrive-live-chat"
@@ -2480,9 +2529,11 @@ function MainApp() {
               <span className="live-chat-nav-icon"><MessageCircle size={19} /></span>
               <span className="live-chat-nav-copy">
                 <strong>실시간 대화</strong>
-                <small><i /> 접속자들과 이야기하기</small>
+                <small><i /> {chatOnlineCount > 0 ? `현재 ${chatOnlineCount}명 접속 중` : '접속자들과 이야기하기'}</small>
               </span>
-              <span className="live-chat-nav-state">{isLiveChatOpen ? '열림' : '열기'}</span>
+              <span className="live-chat-nav-state">
+                {chatMentionPending ? '@호출' : chatUnreadCount > 0 ? chatUnreadCount : isLiveChatOpen ? '열림' : '열기'}
+              </span>
             </button>
           </li>
           
@@ -2665,13 +2716,13 @@ function MainApp() {
                   <h2>인기 곡 목록</h2>
                   <button
                     type="button"
-                    className={`mobile-live-chat-launch ${isLiveChatOpen ? 'active' : ''}`}
+                    className={`mobile-live-chat-launch ${isLiveChatOpen ? 'active' : ''} ${chatOnlineCount > 0 ? 'has-presence' : ''} ${chatActivityActive ? 'has-activity' : ''} ${chatMentionPending ? 'has-mention' : ''}`}
                     onClick={() => setIsLiveChatOpen(true)}
                     aria-controls="musicdrive-live-chat"
                     aria-expanded={isLiveChatOpen}
                   >
                     <MessageCircle size={15} />
-                    <span>{isLiveChatOpen ? '대화창 열림' : '실시간 대화'}</span>
+                    <span>{chatMentionPending ? '나를 호출했어요' : chatUnreadCount > 0 ? `새 대화 ${chatUnreadCount}` : isLiveChatOpen ? '대화창 열림' : '실시간 대화'}</span>
                   </button>
                 </div>
                 <div className="song-list-premium" style={{ maxHeight: '380px', overflowY: 'auto', paddingRight: '6px' }}>
@@ -3700,6 +3751,12 @@ function MainApp() {
         onClose={() => setIsLiveChatOpen(false)}
         session={userSession}
         onLoginRequest={handleGoogleLogin}
+        onPresenceChange={setChatOnlineCount}
+        onActivity={handleLiveChatActivity}
+        onMention={handleLiveChatMention}
+        onNicknameChange={handleChatNicknameChange}
+        activityActive={chatActivityActive}
+        mentionActive={chatMentionPending}
       />
 
       <LoginNoticeModal notice={loginNotice} onClose={closeLoginNotice} />
@@ -4338,7 +4395,7 @@ function MainApp() {
             </header>
 
             {/* B. 메인 콘텐츠 영역 (커버 뷰 / 가사 뷰) */}
-            <div className="fs-content">
+            <div className={`fs-content ${fullscreenTab === 'lyrics' ? 'showing-lyrics' : ''}`}>
               {fullscreenTab === 'cover' ? (
                 <div className="fs-cover-view" onClick={() => setFullscreenTab('lyrics')}>
                   <div className="fs-cover-wrap">
@@ -4378,6 +4435,18 @@ function MainApp() {
                     <button className="fs-tab-btn" onClick={() => setFullscreenTab('cover')}>
                       앨범 커버 보기
                     </button>
+                    <div className="fs-lyrics-heading">
+                      <strong>전체 가사</strong>
+                      <span>{parsedLyrics.length}줄</span>
+                    </div>
+                    <button
+                      type="button"
+                      className={`fs-follow-lyrics-btn ${isLyricsFollowing ? 'active' : ''}`}
+                      onClick={() => setIsLyricsFollowing(current => !current)}
+                      aria-pressed={isLyricsFollowing}
+                    >
+                      {isLyricsFollowing ? '자동 따라가기' : '현재 가사로'}
+                    </button>
                     {isAdminAuthenticated && !isSyncEditing && (
                       <button 
                         className="fs-sync-edit-btn"
@@ -4391,7 +4460,18 @@ function MainApp() {
                       </button>
                     )}
                   </div>
-                  <div className="fs-lyrics-list" ref={mobileLyricsListRef}>
+                  <div
+                    className="fs-lyrics-list"
+                    ref={mobileLyricsListRef}
+                    tabIndex={0}
+                    onWheel={() => setIsLyricsFollowing(false)}
+                    onTouchMove={() => setIsLyricsFollowing(false)}
+                    onKeyDown={(event) => {
+                      if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) {
+                        setIsLyricsFollowing(false);
+                      }
+                    }}
+                  >
                     {parsedLyrics.length > 0 ? (
                       parsedLyrics.map((line, idx) => (
                         <div 
@@ -4408,6 +4488,7 @@ function MainApp() {
                             if (line.time !== null) {
                               audioRef.current.currentTime = line.time;
                               setCurrentTime(line.time);
+                              setIsLyricsFollowing(true);
                             }
                           }}
                         >
