@@ -11,6 +11,10 @@ const { selectWeeklyMatch } = require('./weekly-match');
 const { buildUserDashboard } = require('./user-dashboard');
 const { validateNoticePayload } = require('./notice-validation');
 const {
+  DEFAULT_SONG_REQUEST_TEMPLATE,
+  validateSongRequestTemplate
+} = require('./song-request-template');
+const {
   createFallbackChatNickname,
   detectChatDeviceType,
   extractChatMentionKeys,
@@ -2281,6 +2285,56 @@ app.get('/api/admin/users/:id/insights', async (req, res) => {
 // ==========================================
 // 노래 만들기 (Song Requests) API
 // ==========================================
+
+app.get('/api/song-request-template', async (_req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('site_settings')
+      .select('setting_value, updated_at')
+      .eq('setting_key', 'song_request_template')
+      .maybeSingle();
+
+    if (error) {
+      console.warn('노래 요청 질문 양식 조회 건너뜀:', error.message);
+      return res.json({ template: DEFAULT_SONG_REQUEST_TEMPLATE, updatedAt: null });
+    }
+
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      template: data?.setting_value || DEFAULT_SONG_REQUEST_TEMPLATE,
+      updatedAt: data?.updated_at || null
+    });
+  } catch (err) {
+    console.warn('노래 요청 질문 양식 기본값 사용:', err.message);
+    res.json({ template: DEFAULT_SONG_REQUEST_TEMPLATE, updatedAt: null });
+  }
+});
+
+app.patch('/api/admin/song-request-template', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const validation = validateSongRequestTemplate(req.body?.template);
+  if (validation.error) return res.status(400).json({ error: validation.error });
+
+  try {
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('site_settings')
+      .upsert({
+        setting_key: 'song_request_template',
+        setting_value: validation.value,
+        updated_at: now
+      }, { onConflict: 'setting_key' })
+      .select('setting_value, updated_at')
+      .single();
+    if (error) throw error;
+
+    res.json({ template: data.setting_value, updatedAt: data.updated_at });
+  } catch (err) {
+    console.error('노래 요청 질문 양식 저장 오류:', err.message);
+    res.status(500).json({ error: '질문 양식을 저장할 수 없습니다. 데이터베이스 설정을 확인해주세요.' });
+  }
+});
 
 // 1. 요청 목록 조회 (내용 제외, 제목만 반환)
 app.get('/api/song-requests', async (req, res) => {

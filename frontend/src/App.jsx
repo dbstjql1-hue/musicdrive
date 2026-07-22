@@ -29,6 +29,7 @@ import {
   Maximize2,
   MessageSquare,
   MessageCircle,
+  Mail,
   Eye,
   User,
   LogIn,
@@ -47,6 +48,7 @@ import mascotImg from './assets/mascot.png';
 import { getGenreHeroVideo } from './config/genreHeroVideos';
 import { supabase } from './supabaseClient';
 import { loadAudioSourceIfChanged } from './audioSource';
+import { buildGmailComposeUrl } from './gmailCompose';
 import { trackActivity } from './analytics';
 import {
   API_BASE_URL,
@@ -311,6 +313,7 @@ function MainApp() {
   const [songRequests, setSongRequests] = useState([]);
   const [songRequestView, setSongRequestView] = useState('list'); // list, write, detail
   const [selectedSongRequest, setSelectedSongRequest] = useState(null);
+  const [songRequestTemplate, setSongRequestTemplate] = useState(SONG_REQUEST_TEMPLATE);
   const [songRequestForm, setSongRequestForm] = useState({ title: '', content: SONG_REQUEST_TEMPLATE });
   const [songRequestComment, setSongRequestComment] = useState('');
   const [boardContent, setBoardContent] = useState('');
@@ -931,6 +934,7 @@ function MainApp() {
     fetchLikedSongs();
     fetchVSMatches();
     fetchBoardPosts();
+    fetchSongRequestTemplate();
     fetchSongRequests();
 
     return () => {
@@ -942,6 +946,17 @@ function MainApp() {
 
 
   // 노래 만들기 관련 API
+  const fetchSongRequestTemplate = async () => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/song-request-template`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.template?.trim()) setSongRequestTemplate(data.template);
+    } catch (err) {
+      if (!isApiUnavailableError(err)) console.error('질문 양식 조회 오류:', err);
+    }
+  };
+
   const fetchSongRequests = async () => {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/song-requests`);
@@ -1040,6 +1055,20 @@ function MainApp() {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const handleOpenRequesterGmail = () => {
+    const requesterEmail = selectedSongRequest?.profiles?.email?.trim();
+    if (!requesterEmail) {
+      showToast('요청자의 이메일을 찾을 수 없습니다.');
+      return;
+    }
+
+    const gmailUrl = buildGmailComposeUrl({
+      recipient: requesterEmail,
+      requestTitle: selectedSongRequest.title
+    });
+    window.open(gmailUrl, '_blank', 'noopener,noreferrer');
   };
 
   async function fetchBoardPosts() {
@@ -3258,6 +3287,7 @@ function MainApp() {
                   isUploading,
                   onSubmit: handleUploadSubmit
                 }}
+                onSongRequestTemplateChange={setSongRequestTemplate}
               />
             )}
 
@@ -3274,7 +3304,7 @@ function MainApp() {
                         <button 
                           className="play-btn-premium"
                           onClick={() => {
-                            setSongRequestForm({ title: '', content: SONG_REQUEST_TEMPLATE });
+                            setSongRequestForm({ title: '', content: songRequestTemplate });
                             setSongRequestView('write');
                           }}
                         >
@@ -3530,9 +3560,31 @@ function MainApp() {
                     </div>
 
                     <div className="comments-section" style={{ marginTop: '40px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '24px' }}>
-                      <h3 style={{ marginBottom: '20px', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <MessageSquare size={16} /> 1:1 대화 ({selectedSongRequest.comments?.length || 0})
-                      </h3>
+                      <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                        <h3 style={{ margin: 0, fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <MessageSquare size={16} /> 1:1 대화 ({selectedSongRequest.comments?.length || 0})
+                        </h3>
+                        {userProfile?.role === 'admin' && (
+                          <button
+                            type="button"
+                            onClick={handleOpenRequesterGmail}
+                            className="btn-secondary"
+                            title={`${selectedSongRequest.profiles?.email || '요청자'}에게 Gmail 보내기`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '9px 14px',
+                              borderRadius: '10px',
+                              color: '#fff',
+                              borderColor: 'rgba(234, 67, 53, 0.55)',
+                              background: 'rgba(234, 67, 53, 0.12)'
+                            }}
+                          >
+                            <Mail size={16} /> Gmail로 파일 보내기
+                          </button>
+                        )}
+                      </div>
                       
                       <div className="comments-list" style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
                         {selectedSongRequest.comments?.length === 0 ? (

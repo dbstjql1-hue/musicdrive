@@ -259,3 +259,19 @@ DROP POLICY IF EXISTS "Service role manages login notices" ON public.login_notic
 CREATE POLICY "Service role manages login notices"
     ON public.login_notices FOR ALL TO service_role
     USING (true) WITH CHECK (true);
+
+-- 사이트 운영 설정입니다. 노래 만들기 질문 양식처럼 관리자가 수정하는 값을 저장합니다.
+CREATE TABLE IF NOT EXISTS public.site_settings (
+    setting_key TEXT PRIMARY KEY,
+    setting_value TEXT NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.site_settings ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.site_settings FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.site_settings TO service_role;
+
+DROP POLICY IF EXISTS "Service role manages site settings" ON public.site_settings;
+CREATE POLICY "Service role manages site settings"
+    ON public.site_settings FOR ALL TO service_role
+    USING (true) WITH CHECK (true);

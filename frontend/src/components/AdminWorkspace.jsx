@@ -345,6 +345,110 @@ const noticeTypeLabels = {
   announcement: '일반 공지',
 };
 
+function SongRequestTemplatePanel({ apiBaseUrl, adminPassword, onTemplateChange }) {
+  const [template, setTemplate] = useState('');
+  const [savedTemplate, setSavedTemplate] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [feedback, setFeedback] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    fetch(`${apiBaseUrl}/api/song-request-template`)
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || '질문 양식을 불러오지 못했습니다.');
+        return data;
+      })
+      .then((data) => {
+        if (!active) return;
+        setTemplate(data.template || '');
+        setSavedTemplate(data.template || '');
+      })
+      .catch((error) => {
+        if (active) setFeedback(error.message);
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => { active = false; };
+  }, [apiBaseUrl]);
+
+  const saveTemplate = async (event) => {
+    event.preventDefault();
+    if (isSaving || template.trim().length < 10) return;
+    setIsSaving(true);
+    setFeedback('');
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/admin/song-request-template`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-password': adminPassword
+        },
+        body: JSON.stringify({ template })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || '질문 양식을 저장하지 못했습니다.');
+      setTemplate(data.template);
+      setSavedTemplate(data.template);
+      onTemplateChange?.(data.template);
+      setFeedback('질문 양식을 저장했습니다. 이후 새 요청부터 적용됩니다.');
+    } catch (error) {
+      setFeedback(error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (isLoading) return <LoadingState label="노래 만들기 질문을 불러오는 중입니다." />;
+
+  return (
+    <section className="admin-section admin-notice-editor">
+      <div className="admin-section-heading">
+        <div><span>Song request form</span><h2>노래 만들기 질문 수정</h2></div>
+        <small>여기에 저장한 내용이 회원의 새 요청 작성창에 기본 질문으로 표시됩니다. 기존 요청 내용은 변경되지 않습니다.</small>
+      </div>
+      <form onSubmit={saveTemplate}>
+        <label className="admin-notice-field">
+          <span>질문 양식</span>
+          <textarea
+            value={template}
+            onChange={(event) => setTemplate(event.target.value.slice(0, 5000))}
+            placeholder="회원에게 물어볼 내용을 입력하세요."
+            style={{ minHeight: '420px' }}
+            required
+          />
+          <small>{template.length}/5,000</small>
+        </label>
+        <div className="admin-notice-submit-row">
+          <span className={feedback.includes('못') || feedback.includes('수 없') ? 'error' : ''}>{feedback}</span>
+          <div className="admin-notice-editor-actions">
+            <button
+              type="button"
+              className="admin-secondary-button"
+              onClick={() => {
+                setTemplate(savedTemplate);
+                setFeedback('저장된 질문 양식으로 되돌렸습니다.');
+              }}
+              disabled={isSaving || template === savedTemplate}
+            >
+              <X size={16} /> 변경 취소
+            </button>
+            <button
+              type="submit"
+              className="admin-primary-button"
+              disabled={isSaving || template.trim().length < 10 || template === savedTemplate}
+            >
+              <Pencil size={17} /> {isSaving ? '저장 중' : '질문 양식 저장'}
+            </button>
+          </div>
+        </div>
+      </form>
+    </section>
+  );
+}
+
 function NoticePanel({ apiBaseUrl, adminPassword }) {
   const [notices, setNotices] = useState([]);
   const [title, setTitle] = useState('');
@@ -687,6 +791,7 @@ export function AdminWorkspace(props) {
     { id: 'dashboard', label: '대시보드', icon: BarChart3, refresh: props.fetchStats },
     { id: 'vsstats', label: '투표 통계', icon: Vote, refresh: props.fetchVsStats },
     { id: 'upload', label: '음원 등록', icon: UploadCloud },
+    { id: 'request-template', label: '요청 질문', icon: Pencil },
     { id: 'notices', label: '공지사항', icon: Megaphone },
     { id: 'sync', label: '동기화', icon: Database, refresh: props.fetchUnsynced },
     { id: 'members', label: '회원 관리', icon: Users, refresh: props.fetchMembers }
@@ -711,6 +816,7 @@ export function AdminWorkspace(props) {
         {props.adminTab === 'dashboard' && <DashboardPanel stats={props.adminStats} onSelectUser={openUserInsight} />}
         {props.adminTab === 'vsstats' && <VotePanel data={props.adminVsStats} />}
         {props.adminTab === 'upload' && <UploadPanel {...props.uploadProps} />}
+        {props.adminTab === 'request-template' && <SongRequestTemplatePanel apiBaseUrl={props.apiBaseUrl} adminPassword={props.adminPassword} onTemplateChange={props.onSongRequestTemplateChange} />}
         {props.adminTab === 'notices' && <NoticePanel apiBaseUrl={props.apiBaseUrl} adminPassword={props.adminPassword} />}
         {props.adminTab === 'members' && <MembersPanel members={props.memberList} stats={props.adminStats} onToggleRole={props.toggleMemberRole} onSelectUser={openUserInsight} />}
         {props.adminTab === 'sync' && <SyncPanel data={props.unsyncedData} isSyncing={props.isSyncing} logs={props.syncLogs} syncComplete={props.syncComplete} onRefresh={props.fetchUnsynced} onRun={props.runSync} apiBaseUrl={props.apiBaseUrl} adminPassword={props.adminPassword} />}
