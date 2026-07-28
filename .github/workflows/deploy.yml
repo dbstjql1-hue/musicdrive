@@ -6,6 +6,10 @@ on:
     paths:
       - 'backend/**'
       - '.github/workflows/deploy.yml'
+  schedule:
+    # Every day at 06:00 KST (21:00 UTC on the previous day).
+    - cron: '0 21 * * *'
+  workflow_dispatch:
 jobs:
   deploy:
     runs-on: ubuntu-latest
