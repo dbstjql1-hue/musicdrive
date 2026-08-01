@@ -275,3 +275,24 @@ DROP POLICY IF EXISTS "Service role manages site settings" ON public.site_settin
 CREATE POLICY "Service role manages site settings"
     ON public.site_settings FOR ALL TO service_role
     USING (true) WITH CHECK (true);
+
+-- 완성된 노래 제목은 요청 본문과 분리해 요청 카드에 공개합니다.
+ALTER TABLE public.song_requests
+    ADD COLUMN IF NOT EXISTS completed_song_title TEXT;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'song_requests_completed_song_title_length'
+          AND conrelid = 'public.song_requests'::regclass
+    ) THEN
+        ALTER TABLE public.song_requests
+            ADD CONSTRAINT song_requests_completed_song_title_length
+            CHECK (
+                completed_song_title IS NULL
+                OR char_length(completed_song_title) BETWEEN 1 AND 100
+            );
+    END IF;
+END $$;

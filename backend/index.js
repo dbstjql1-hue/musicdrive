@@ -14,6 +14,7 @@ const {
   DEFAULT_SONG_REQUEST_TEMPLATE,
   validateSongRequestTemplate
 } = require('./song-request-template');
+const { validateCompletedSongTitle } = require('./song-request-validation');
 const {
   createFallbackChatNickname,
   detectChatDeviceType,
@@ -2336,12 +2337,12 @@ app.patch('/api/admin/song-request-template', async (req, res) => {
   }
 });
 
-// 1. 요청 목록 조회 (내용 제외, 제목만 반환)
+// 1. 요청 목록 조회 (비밀 요청 내용은 제외하고 공개 정보만 반환)
 app.get('/api/song-requests', async (req, res) => {
   try {
     const { data: requests, error } = await supabase
       .from('song_requests')
-      .select('*')
+      .select('id, user_id, title, status, completed_song_title, created_at')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -2473,7 +2474,8 @@ app.post('/api/song-requests/:id/comments', async (req, res) => {
 app.put('/api/song-requests/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId, title, content, status } = req.body;
+    const { userId, title, content, status, completedSongTitle } = req.body;
+    const hasCompletedSongTitle = Object.prototype.hasOwnProperty.call(req.body, 'completedSongTitle');
 
     if (!userId) return res.status(400).json({ error: '권한이 없습니다.' });
 
@@ -2483,11 +2485,19 @@ app.put('/api/song-requests/:id', async (req, res) => {
     const { data: request } = await supabase.from('song_requests').select('user_id').eq('id', id).single();
     if (!request) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
     if (request.user_id !== userId && !isAdmin) return res.status(403).json({ error: '권한이 없습니다.' });
+    if (hasCompletedSongTitle && !isAdmin) {
+      return res.status(403).json({ error: '완성된 노래 제목은 관리자만 수정할 수 있습니다.' });
+    }
 
     const updateData = {};
     if (title) updateData.title = title;
     if (content) updateData.content = content;
     if (isAdmin && status) updateData.status = status;
+    if (hasCompletedSongTitle) {
+      const validation = validateCompletedSongTitle(completedSongTitle);
+      if (validation.error) return res.status(400).json({ error: validation.error });
+      updateData.completed_song_title = validation.value;
+    }
 
     const { data, error } = await supabase
       .from('song_requests')

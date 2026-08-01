@@ -316,6 +316,8 @@ function MainApp() {
   const [songRequestTemplate, setSongRequestTemplate] = useState(SONG_REQUEST_TEMPLATE);
   const [songRequestForm, setSongRequestForm] = useState({ title: '', content: SONG_REQUEST_TEMPLATE });
   const [songRequestComment, setSongRequestComment] = useState('');
+  const [completedSongTitleDraft, setCompletedSongTitleDraft] = useState('');
+  const [isSavingCompletedSongTitle, setIsSavingCompletedSongTitle] = useState(false);
   const [boardContent, setBoardContent] = useState('');
   const [commentAuthor, setCommentAuthor] = useState('');
   const [commentPassword, setCommentPassword] = useState('');
@@ -975,6 +977,7 @@ function MainApp() {
       const data = await res.json();
       if (res.ok) {
         setSelectedSongRequest(data);
+        setCompletedSongTitleDraft(data.completed_song_title || '');
         setSongRequestView('detail');
       } else {
         showToast(data.error || '권한이 없습니다.');
@@ -1054,6 +1057,44 @@ function MainApp() {
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleCompletedSongTitleSave = async () => {
+    if (!selectedSongRequest || isSavingCompletedSongTitle) return;
+
+    const completedSongTitle = completedSongTitleDraft.trim();
+    if (completedSongTitle.length > 100) {
+      showToast('완성된 노래 제목은 100자 이하로 입력해주세요.');
+      return;
+    }
+
+    setIsSavingCompletedSongTitle(true);
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/song-requests/${selectedSongRequest.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: userSession?.user?.id,
+          completedSongTitle
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || '완성된 노래 제목을 저장하지 못했습니다.');
+        return;
+      }
+
+      showToast(completedSongTitle ? '완성된 노래 제목을 저장했습니다.' : '완성된 노래 제목을 지웠습니다.');
+      await Promise.all([
+        fetchSongRequestDetail(selectedSongRequest.id),
+        fetchSongRequests()
+      ]);
+    } catch (err) {
+      console.error(err);
+      showToast('완성된 노래 제목을 저장하지 못했습니다.');
+    } finally {
+      setIsSavingCompletedSongTitle(false);
     }
   };
 
@@ -3370,10 +3411,25 @@ function MainApp() {
                                   <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>비밀글</span>
                                 </div>
                               </div>
-                              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px', minWidth: 0 }}>
+                                {req.status === '노래등록완료' && req.completed_song_title && (
+                                  <span
+                                    title={`완성곡: ${req.completed_song_title}`}
+                                    style={{
+                                      display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0,
+                                      color: '#f2f2f7', fontSize: '12px', fontWeight: '700'
+                                    }}
+                                  >
+                                    <Music size={14} style={{ flexShrink: 0, color: '#32ff64' }} />
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {req.completed_song_title}
+                                    </span>
+                                  </span>
+                                )}
                                 <span style={{
                                   fontSize: '11px', fontWeight: '600', padding: '4px 10px', borderRadius: '12px',
-                                  background: getStatusStyle(req.status || '대기중').bg, color: getStatusStyle(req.status || '대기중').color
+                                  background: getStatusStyle(req.status || '대기중').bg, color: getStatusStyle(req.status || '대기중').color,
+                                  marginLeft: 'auto', flexShrink: 0
                                 }}>{req.status || '대기중'}</span>
                               </div>
                               <h3 style={{ fontSize: '19px', fontWeight: '600', color: '#fff', margin: '16px 0', lineHeight: '1.5', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
@@ -3509,28 +3565,81 @@ function MainApp() {
                         
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-end' }}>
                             {userProfile?.role === 'admin' && (
-                              <select 
-                                value={selectedSongRequest.status || '대기중'}
-                                onChange={async (e) => {
-                                  const newStatus = e.target.value;
-                                  try {
-                                    const res = await apiFetch(`${API_BASE_URL}/api/song-requests/${selectedSongRequest.id}`, {
-                                      method: 'PUT',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ userId: userSession?.user?.id, status: newStatus })
-                                    });
-                                    if (res.ok) fetchSongRequestDetail(selectedSongRequest.id);
-                                  } catch (err) { console.error(err); }
-                                }}
-                                style={{
-                                  padding: '6px 12px', background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', outline: 'none'
-                                }}
-                              >
-                                <option value="대기중">대기중</option>
-                                <option value="노래 만드는중">노래 만드는중</option>
-                                <option value="노래 완성">노래 완성</option>
-                                <option value="노래등록완료">노래등록완료</option>
-                              </select>
+                              <>
+                                <div style={{ width: 'min(100%, 320px)' }}>
+                                  <label htmlFor="completed-song-title" style={{ display: 'block', marginBottom: '7px', color: 'var(--text-secondary)', fontSize: '12px', fontWeight: '700' }}>
+                                    완성된 노래 제목
+                                  </label>
+                                  <div style={{ display: 'flex', gap: '8px' }}>
+                                    <input
+                                      id="completed-song-title"
+                                      type="text"
+                                      maxLength={100}
+                                      value={completedSongTitleDraft}
+                                      onChange={(e) => setCompletedSongTitleDraft(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          e.preventDefault();
+                                          handleCompletedSongTitleSave();
+                                        }
+                                      }}
+                                      placeholder="예: 새벽 드라이브"
+                                      style={{
+                                        minWidth: 0, width: '220px', padding: '8px 10px',
+                                        background: 'rgba(0,0,0,0.4)', color: '#fff',
+                                        border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', outline: 'none'
+                                      }}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={handleCompletedSongTitleSave}
+                                      disabled={isSavingCompletedSongTitle}
+                                      style={{
+                                        padding: '8px 12px', border: 'none', borderRadius: '8px', cursor: 'pointer',
+                                        background: 'rgba(50, 255, 100, 0.18)', color: '#32ff64', fontWeight: '700', flexShrink: 0
+                                      }}
+                                    >
+                                      {isSavingCompletedSongTitle ? '저장 중' : '저장'}
+                                    </button>
+                                  </div>
+                                  <small style={{ display: 'block', marginTop: '6px', color: 'var(--text-secondary)', fontSize: '10px', textAlign: 'left' }}>
+                                    노래등록완료 상태에서 요청 카드에 공개됩니다.
+                                  </small>
+                                </div>
+                                <select
+                                  value={selectedSongRequest.status || '대기중'}
+                                  onChange={async (e) => {
+                                    const newStatus = e.target.value;
+                                    try {
+                                      const res = await apiFetch(`${API_BASE_URL}/api/song-requests/${selectedSongRequest.id}`, {
+                                        method: 'PUT',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ userId: userSession?.user?.id, status: newStatus })
+                                      });
+                                      if (res.ok) {
+                                        await Promise.all([
+                                          fetchSongRequestDetail(selectedSongRequest.id),
+                                          fetchSongRequests()
+                                        ]);
+                                      } else {
+                                        const data = await res.json();
+                                        showToast(data.error || '상태를 변경하지 못했습니다.');
+                                      }
+                                    } catch (err) {
+                                      console.error(err);
+                                      showToast('상태를 변경하지 못했습니다.');
+                                    }
+                                  }}
+                                  style={{
+                                    padding: '6px 12px', background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', outline: 'none'
+                                  }}
+                                >
+                                  <option value="대기중">대기중</option>
+                                  <option value="노래 만드는중">노래 만드는중</option>
+                                  <option value="노래 완성">노래 완성</option>
+                                  <option value="노래등록완료">노래등록완료</option>
+                                </select>
+                              </>
                             )}
                             {(userSession?.user?.id === selectedSongRequest.user_id || userProfile?.role === 'admin') && (
                               <div style={{ display: 'flex', gap: '10px' }}>
