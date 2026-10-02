@@ -42,7 +42,9 @@ jobs:
           key: whisper-${{ runner.os }}-${{ env.WHISPER_MODEL }}-v1
 
       - name: Install transcription runtime
-        run: pip install --disable-pip-version-check faster-whisper==1.2.1
+        # PyAV 19 removed the metadata_errors argument still used by
+        # faster-whisper 1.2.1, so keep the last compatible PyAV release.
+        run: pip install --disable-pip-version-check faster-whisper==1.2.1 av==18.1.0
 
       - name: Generate lyric timing
         shell: bash
